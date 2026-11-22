@@ -37,14 +37,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val StudioBg = Color(0xFF101210)
-private val StudioPanel = Color(0xFF191D19)
-private val StudioRaised = Color(0xFF222821)
-private val StudioLine = Color(0xFF30382F)
-private val StudioLime = Color(0xFFC5F36A)
-private val StudioCream = Color(0xFFF2F0E8)
-private val StudioMuted = Color(0xFFA1A99D)
-private val StudioOrange = Color(0xFFE6A36A)
+private val Paper = Color(0xFFF2F0E9)
+private val Ink = Color(0xFF171916)
+private val MutedInk = Color(0xFF777A72)
+private val Blue = Color(0xFF3157F6)
+private val BluePale = Color(0xFFE0E6FF)
+private val Coral = Color(0xFFE8795B)
+private val CardPaper = Color(0xFFFFFEFA)
+private val Hairline = Color(0xFFE0DED5)
 
 @Composable
 fun HomeHubScreen(
@@ -66,73 +66,101 @@ fun HomeHubScreen(
     }
     val visibleTemplates = featured.filter { templateFilter == "All" || it.category.equals(templateFilter, true) }
 
-    Column(Modifier.fillMaxSize().background(StudioBg).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(Paper).statusBarsPadding()) {
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(27.dp)
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 30.dp),
+            verticalArrangement = Arrangement.spacedBy(30.dp)
         ) {
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(StudioLime), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.GridView, null, tint = StudioBg, modifier = Modifier.size(21.dp))
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text("SCROLLGRID", color = StudioCream, fontSize = 15.sp, fontWeight = FontWeight.Black, letterSpacing = 1.8.sp)
-                        Text("CREATIVE STUDIO", color = StudioMuted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.1.sp)
-                    }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(top = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text("SCROLLGRID", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = (-.8).sp)
+                    Text("THE COLLAGE STUDIO", color = MutedInk, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.4.sp)
                 }
-                Surface(color = StudioPanel, shape = CircleShape, border = BorderStroke(1.dp, StudioLine)) {
-                    Row(Modifier.padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(Modifier.size(6.dp).clip(CircleShape).background(StudioLime))
-                        Text("STUDIO", color = StudioCream, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Box(Modifier.size(42.dp).clip(CircleShape).background(Ink), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = Paper, modifier = Modifier.size(19.dp))
+                }
+            }
+
+            Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(Coral))
+                    Text("YOUR CREATIVE SPACE", color = MutedInk, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                }
+                Text(
+                    "Good stories\ndeserve a great\nlayout.",
+                    color = Ink, fontSize = 43.sp, lineHeight = 43.sp,
+                    fontWeight = FontWeight.Black, letterSpacing = (-2.2).sp
+                )
+                Text(
+                    "Turn your photos into something worth stopping for.",
+                    color = MutedInk, fontSize = 13.sp, lineHeight = 19.sp
+                )
+                HeroComposition(Modifier.fillMaxWidth().height(236.dp))
+                Button(
+                    onClick = onStartPhotoGrid,
+                    modifier = Modifier.fillMaxWidth().height(58.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Blue, contentColor = Color.White)
+                ) {
+                    Icon(Icons.Default.Add, null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(9.dp))
+                    Text("Create a collage", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(19.dp))
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                HomeSectionTitle("PICK YOUR FORMAT", "Start with a canvas")
+                Row(Modifier.padding(horizontal = 22.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FormatCard("Photo grid", "Classic collage", Icons.Default.GridView, Blue, Modifier.weight(1f), onStartPhotoGrid)
+                    FormatCard("Carousel", "Swipe post", Icons.Default.ViewCarousel, Coral, Modifier.weight(1f)) { onStartCarousel(3) }
+                }
+                Surface(
+                    onClick = onStartFreeform,
+                    modifier = Modifier.padding(horizontal = 22.dp).fillMaxWidth(),
+                    color = Ink, shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(Modifier.padding(horizontal = 17.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = .12f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Layers, null, tint = Color.White, modifier = Modifier.size(21.dp))
+                        }
+                        Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Freeform canvas", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text("Arrange every layer your way", color = Color(0xFFB9BDB5), fontSize = 10.sp)
+                        }
+                        Icon(Icons.Default.ArrowOutward, null, tint = Color.White, modifier = Modifier.size(18.dp))
                     }
                 }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("YOUR CANVAS.", color = StudioMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.2.sp)
-                    Text("Make it\nworth a swipe.", color = StudioCream, fontSize = 35.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1.3).sp)
+                Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
+                    HomeSectionTitle("PICK UP WHERE YOU LEFT OFF", "Recent projects")
+                    Text(drafts.size.toString().padStart(2, '0'), color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Black)
                 }
-                Box(
-                    Modifier.fillMaxWidth().height(218.dp).clip(RoundedCornerShape(22.dp))
-                        .background(Brush.linearGradient(listOf(Color(0xFF354333), Color(0xFF1C2820), Color(0xFF171B17))))
-                ) {
-                    HeroArtwork(Modifier.fillMaxSize())
-                    Column(Modifier.align(Alignment.BottomStart).padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text("THE CREATIVE PLAYGROUND", color = StudioLime, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.7.sp)
-                        Text("Your next story\nstarts here.", color = Color.White, fontSize = 23.sp, lineHeight = 25.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Surface(onClick = onStartPhotoGrid, color = StudioLime, shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).padding(17.dp)) {
-                        Row(Modifier.padding(start = 15.dp, end = 12.dp, top = 11.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Create", color = StudioBg, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Icon(Icons.Default.ArrowUpward, null, tint = StudioBg, modifier = Modifier.size(15.dp))
-                        }
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StartModeCard("Carousel", "Seamless swipe posts", Icons.Default.ViewCarousel, StudioOrange, Modifier.weight(1f)) { onStartCarousel(3) }
-                    StartModeCard("Freeform", "Layer it your way", Icons.Default.DashboardCustomize, StudioLime, Modifier.weight(1f), onStartFreeform)
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
-                SectionHeading("YOUR WORKSPACE", "Recent projects", if (drafts.isEmpty()) "0 PROJECTS" else "\${drafts.size} PROJECTS")
                 if (drafts.isEmpty()) {
-                    Surface(color = StudioPanel, shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, StudioLine), modifier = Modifier.fillMaxWidth()) {
-                        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                            Box(Modifier.size(48.dp).clip(RoundedCornerShape(13.dp)).background(StudioRaised), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.FolderOpen, null, tint = StudioLime, modifier = Modifier.size(23.dp))
+                    Surface(
+                        modifier = Modifier.padding(horizontal = 22.dp).fillMaxWidth(),
+                        color = CardPaper, shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Hairline)
+                    ) {
+                        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(BluePale), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.FolderOpen, null, tint = Blue)
                             }
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
-                                Text("A clean slate.", color = StudioCream, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Your saved collages will live here. Start creating to fill this space.", color = StudioMuted, fontSize = 11.sp, lineHeight = 16.sp)
+                            Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("Your gallery starts here", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Create your first design and it will appear here.", color = MutedInk, fontSize = 10.sp, lineHeight = 15.sp)
                             }
                         }
                     }
                 } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(end = 2.dp)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 22.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(drafts, key = { it.id }) { draft ->
                             DraftCard(draft, if (draft.updatedAtMillis > 0L) dateFmt.format(Date(draft.updatedAtMillis)) else "Saved",
                                 { onOpenDraft(draft) }, { onDuplicateDraft(draft) }, { onDeleteDraft(draft) })
@@ -141,103 +169,110 @@ fun HomeHubScreen(
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
-                SectionHeading("CURATED STARTING POINTS", "Explore templates", "VIEW ALL")
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("All", "Classic", "Hero", "Shapes", "Masonry").forEach { category ->
-                        val selected = templateFilter == category
-                        Surface(onClick = { templateFilter = category }, color = if (selected) StudioLime else StudioPanel,
-                            shape = CircleShape, border = BorderStroke(1.dp, if (selected) StudioLime else StudioLine)) {
-                            Text(category, color = if (selected) StudioBg else StudioMuted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 15.dp, vertical = 8.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HomeSectionTitle("DESIGNED TO GET YOU STARTED", "Find your layout")
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("All", "Classic", "Hero", "Shapes", "Masonry").forEach { category ->
+                            val selected = templateFilter == category
+                            Surface(
+                                onClick = { templateFilter = category },
+                                color = if (selected) Ink else CardPaper,
+                                shape = CircleShape,
+                                border = BorderStroke(1.dp, if (selected) Ink else Hairline)
+                            ) {
+                                Text(category, color = if (selected) Color.White else MutedInk, fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp))
+                            }
                         }
                     }
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                Column(Modifier.padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     visibleTemplates.chunked(2).forEach { rowTemplates ->
                         Row(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                            rowTemplates.forEach { layout ->
-                                TemplateCard(layout, Modifier.weight(1f)) { onSelectGridTemplate(layout) }
-                            }
+                            rowTemplates.forEach { layout -> TemplateCard(layout, Modifier.weight(1f)) { onSelectGridTemplate(layout) } }
                             if (rowTemplates.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SectionHeading("BUILT FOR THE FEED", "Swipe stories", "SCRL")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                Column(Modifier.padding(horizontal = 22.dp)) {
+                    HomeSectionTitle("MADE FOR THE SWIPE", "Carousel stories")
+                }
+                LazyRow(contentPadding = PaddingValues(horizontal = 22.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
                     items(ScrlTemplate.entries.toList()) { template -> CarouselCard(template) { onSelectScrlTemplate(template) } }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-        }
-
-        Row(
-            Modifier.fillMaxWidth().background(StudioBg).border(BorderStroke(0.5.dp, StudioLine)).padding(horizontal = 28.dp, vertical = 13.dp),
-            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-        ) {
-            BottomNavItem(Icons.Default.Home, "Home", true)
-            BottomNavItem(Icons.Default.GridView, "Templates", false)
-            BottomNavItem(Icons.Default.FolderOpen, "Projects", false)
-            BottomNavItem(Icons.Default.Settings, "Settings", false)
         }
     }
 }
 
 @Composable
-private fun HeroArtwork(modifier: Modifier = Modifier) {
-    Box(modifier) {
+private fun HeroComposition(modifier: Modifier = Modifier) {
+    Box(modifier.clip(RoundedCornerShape(22.dp)).background(Color(0xFFDDD8CA))) {
         Canvas(Modifier.fillMaxSize()) {
-            val w = size.width; val h = size.height
-            drawCircle(StudioLime.copy(alpha = .08f), radius = h * .78f, center = androidx.compose.ui.geometry.Offset(w * .83f, h * .30f))
-            drawCircle(StudioLime.copy(alpha = .12f), radius = h * .56f, center = androidx.compose.ui.geometry.Offset(w * .83f, h * .30f), style = Stroke(1.2.dp.toPx()))
-            drawLine(Color.White.copy(alpha = .12f), androidx.compose.ui.geometry.Offset(w * .56f, 0f), androidx.compose.ui.geometry.Offset(w * .56f, h), 1.dp.toPx())
-            drawLine(Color.White.copy(alpha = .12f), androidx.compose.ui.geometry.Offset(w * .78f, 0f), androidx.compose.ui.geometry.Offset(w * .78f, h), 1.dp.toPx())
+            drawCircle(Color(0xFFB5C0A8), size.height * .63f, androidx.compose.ui.geometry.Offset(size.width * .88f, size.height * .12f))
+            drawCircle(Color(0xFF3157F6).copy(alpha = .12f), size.height * .55f, androidx.compose.ui.geometry.Offset(size.width * .12f, size.height * .92f))
+            drawLine(Color(0xFF777A72).copy(alpha = .35f), androidx.compose.ui.geometry.Offset(size.width * .5f, 0f), androidx.compose.ui.geometry.Offset(size.width * .5f, size.height), 1.dp.toPx())
         }
-        Box(Modifier.align(Alignment.TopEnd).padding(top = 19.dp, end = 27.dp).size(90.dp, 132.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xFFB7A68A)).padding(4.dp)) {
-            Canvas(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp))) {
-                drawRect(Brush.linearGradient(listOf(Color(0xFF82917C), Color(0xFF263E35))))
-                drawCircle(Color(0xFFE7C58E), size.minDimension * .18f, androidx.compose.ui.geometry.Offset(size.width * .68f, size.height * .25f))
-                val mountain = Path().apply { moveTo(0f, size.height * .74f); lineTo(size.width * .42f, size.height * .38f); lineTo(size.width * .72f, size.height * .66f); lineTo(size.width, size.height * .46f); lineTo(size.width, size.height); lineTo(0f, size.height); close() }
-                drawPath(mountain, Color(0xFF263B31))
+        Box(Modifier.align(Alignment.CenterStart).padding(start = 19.dp, top = 12.dp, bottom = 12.dp).width(112.dp).fillMaxHeight(.82f)
+            .clip(RoundedCornerShape(9.dp)).background(Color(0xFF536B55))) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(Color(0xFFE8C89B), size.minDimension * .18f, androidx.compose.ui.geometry.Offset(size.width * .72f, size.height * .25f))
+                val p = Path().apply {
+                    moveTo(0f, size.height * .72f); lineTo(size.width * .42f, size.height * .36f)
+                    lineTo(size.width * .72f, size.height * .62f); lineTo(size.width, size.height * .44f)
+                    lineTo(size.width, size.height); lineTo(0f, size.height); close()
+                }
+                drawPath(p, Color(0xFF253C32))
             }
         }
-        Box(Modifier.align(Alignment.TopEnd).padding(top = 76.dp, end = 115.dp).size(78.dp, 105.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFE9DCC4)).padding(4.dp)) {
-            Canvas(Modifier.fillMaxSize().clip(RoundedCornerShape(5.dp))) {
-                drawRect(Brush.linearGradient(listOf(Color(0xFFBD8F68), Color(0xFF6E4E3F))))
-                drawCircle(Color(0xFFD9B88E), size.minDimension * .18f, androidx.compose.ui.geometry.Offset(size.width * .48f, size.height * .36f))
-                drawRect(Color(0xFF34463A), androidx.compose.ui.geometry.Offset(size.width * .18f, size.height * .58f), androidx.compose.ui.geometry.Size(size.width * .64f, size.height * .45f))
+        Box(Modifier.align(Alignment.Center).padding(start = 75.dp, top = 28.dp).width(100.dp).fillMaxHeight(.72f)
+            .clip(RoundedCornerShape(9.dp)).background(Color(0xFFC17C62)).border(4.dp, Paper, RoundedCornerShape(9.dp))) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(Color(0xFFF0CBA0), size.minDimension * .17f, androidx.compose.ui.geometry.Offset(size.width * .5f, size.height * .3f))
+                drawRoundRect(Color(0xFF34483B), androidx.compose.ui.geometry.Offset(size.width * .17f, size.height * .57f),
+                    androidx.compose.ui.geometry.Size(size.width * .66f, size.height * .5f), androidx.compose.ui.geometry.CornerRadius(20f))
             }
         }
-        Surface(Modifier.align(Alignment.TopEnd).padding(top = 17.dp, end = 16.dp), color = StudioLime, shape = CircleShape) {
-            Text("01 / 03", color = StudioBg, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
+        Box(Modifier.align(Alignment.CenterEnd).padding(end = 18.dp, top = 14.dp).width(83.dp).fillMaxHeight(.86f)
+            .clip(RoundedCornerShape(9.dp)).background(Color(0xFFE5B978)).border(4.dp, Paper, RoundedCornerShape(9.dp))) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(Color(0xFF9B604C), size.minDimension * .19f, androidx.compose.ui.geometry.Offset(size.width * .52f, size.height * .28f))
+                drawRect(Color(0xFF41584A), androidx.compose.ui.geometry.Offset(0f, size.height * .58f), androidx.compose.ui.geometry.Size(size.width, size.height * .42f))
+            }
+        }
+        Surface(Modifier.align(Alignment.TopStart).padding(13.dp), color = Ink, shape = CircleShape) {
+            Text("LAYOUT NO. 01", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
+        }
+        Surface(Modifier.align(Alignment.BottomEnd).padding(13.dp), color = Blue, shape = CircleShape) {
+            Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.padding(10.dp).size(16.dp))
         }
     }
 }
 
 @Composable
-private fun SectionHeading(eyebrow: String, title: String, trailing: String) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(eyebrow, color = StudioLime, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.7.sp)
-            Text(title, color = StudioCream, fontSize = 21.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.5).sp)
-        }
-        Text(trailing, color = StudioMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 4.dp))
+private fun HomeSectionTitle(eyebrow: String, title: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(eyebrow, color = Blue, fontSize = 8.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+        Text(title, color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = (-.8).sp)
     }
 }
 
 @Composable
-private fun StartModeCard(title: String, detail: String, icon: ImageVector, accent: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(onClick = onClick, modifier = modifier, color = StudioPanel, shape = RoundedCornerShape(17.dp), border = BorderStroke(1.dp, StudioLine)) {
-        Row(Modifier.padding(horizontal = 13.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(36.dp).clip(RoundedCornerShape(11.dp)).background(accent.copy(alpha = .13f)), contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = accent, modifier = Modifier.size(19.dp))
+private fun FormatCard(title: String, detail: String, icon: ImageVector, accent: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(onClick = onClick, modifier = modifier, color = CardPaper, shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Hairline)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
+            Box(Modifier.size(39.dp).clip(RoundedCornerShape(12.dp)).background(accent.copy(alpha = .12f)), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = accent, modifier = Modifier.size(20.dp))
             }
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.weight(1f)) {
-                Text(title, color = StudioCream, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text(detail, color = StudioMuted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(detail, color = MutedInk, fontSize = 10.sp)
             }
         }
     }
@@ -246,57 +281,55 @@ private fun StartModeCard(title: String, detail: String, icon: ImageVector, acce
 @Composable
 private fun DraftCard(draft: SavedDraftMeta, dateText: String, onOpen: () -> Unit, onDuplicate: () -> Unit, onDelete: () -> Unit) {
     var menuExpanded by remember { mutableStateOf(false) }
-    Column(Modifier.width(190.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        Box(Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(16.dp)).background(StudioRaised).clickable(onClick = onOpen)) {
+    Column(Modifier.width(194.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Box(Modifier.fillMaxWidth().height(145.dp).clip(RoundedCornerShape(15.dp)).background(Color(0xFFE4E1D8)).clickable(onClick = onOpen)) {
             if (draft.previewUris.isEmpty()) {
-                Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF303B30), Color(0xFF1A211B)))), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Collections, null, tint = StudioLime.copy(alpha = .8f), modifier = Modifier.size(30.dp))
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Collections, null, tint = Blue, modifier = Modifier.size(30.dp))
                 }
             } else {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     draft.previewUris.take(3).forEachIndexed { index, uri ->
-                        AsyncImage(model = Uri.parse(uri), contentDescription = if (index == 0) draft.name else null, contentScale = ContentScale.Crop,
-                            modifier = Modifier.weight(if (index == 0) 1.2f else 1f).fillMaxHeight())
+                        AsyncImage(model = Uri.parse(uri), contentDescription = if (index == 0) draft.name else null,
+                            contentScale = ContentScale.Crop, modifier = Modifier.weight(if (index == 0) 1.2f else 1f).fillMaxHeight())
                     }
                 }
             }
-            Surface(Modifier.align(Alignment.TopEnd).padding(7.dp), color = Color.Black.copy(alpha = .58f), shape = CircleShape) {
+            Surface(Modifier.align(Alignment.TopEnd).padding(7.dp), color = Color.White.copy(alpha = .9f), shape = CircleShape) {
                 Box {
                     IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(30.dp)) {
-                        Icon(Icons.Default.MoreHoriz, "Project options", tint = Color.White, modifier = Modifier.size(17.dp))
+                        Icon(Icons.Default.MoreHoriz, "Project options", tint = Ink, modifier = Modifier.size(17.dp))
                     }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }, containerColor = StudioRaised) {
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                         DropdownMenuItem(text = { Text("Open") }, onClick = { menuExpanded = false; onOpen() })
                         DropdownMenuItem(text = { Text("Duplicate") }, onClick = { menuExpanded = false; onDuplicate() })
-                        DropdownMenuItem(text = { Text("Delete", color = Color(0xFFFF8B80)) }, onClick = { menuExpanded = false; onDelete() })
+                        DropdownMenuItem(text = { Text("Delete", color = Color(0xFFB63D32)) }, onClick = { menuExpanded = false; onDelete() })
                     }
                 }
-            }
-            Surface(Modifier.align(Alignment.BottomStart).padding(9.dp), color = Color.Black.copy(alpha = .58f), shape = CircleShape) {
-                Text(draft.modeTitle.uppercase(), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
             }
         }
         Column(Modifier.clickable(onClick = onOpen).padding(horizontal = 2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(draft.name, color = StudioCream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("$dateText  Â·  \${draft.itemCount} items", color = StudioMuted, fontSize = 10.sp)
+            Text(draft.name, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(dateText + "  ·  " + draft.itemCount + " items", color = MutedInk, fontSize = 10.sp)
         }
     }
 }
 
 @Composable
 private fun TemplateCard(layout: LayoutStyle, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(onClick = onClick, modifier = modifier, color = StudioPanel, shape = RoundedCornerShape(17.dp), border = BorderStroke(1.dp, StudioLine)) {
+    Surface(onClick = onClick, modifier = modifier, color = CardPaper, shape = RoundedCornerShape(17.dp),
+        border = BorderStroke(1.dp, Hairline)) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Box(Modifier.fillMaxWidth().aspectRatio(1.18f).clip(RoundedCornerShape(11.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF2A352B), Color(0xFF171D18)))).padding(10.dp)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(1.12f).clip(RoundedCornerShape(11.dp)).background(Color(0xFFE8E5DC)).padding(10.dp)) {
                 LayoutArtwork(layout, Modifier.fillMaxSize())
-                Surface(Modifier.align(Alignment.TopEnd), color = StudioLime, shape = CircleShape) {
-                    Text("\${layout.slotCount}P", color = StudioBg, fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
+                Surface(Modifier.align(Alignment.TopEnd), color = Ink, shape = CircleShape) {
+                    Text(layout.slotCount.toString() + "P", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(layout.label, color = StudioCream, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(layout.category.uppercase(), color = StudioMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                Text(layout.label, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(layout.category.uppercase(), color = MutedInk, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
             }
         }
     }
@@ -306,7 +339,7 @@ private fun TemplateCard(layout: LayoutStyle, modifier: Modifier = Modifier, onC
 private fun LayoutArtwork(layout: LayoutStyle, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         val gap = 3.dp.toPx()
-        val palette = listOf(Color(0xFFB8A88A), Color(0xFF6F8973), Color(0xFFC17C55), Color(0xFF596B62), Color(0xFFD5C9AD))
+        val palette = listOf(Color(0xFF3157F6), Color(0xFFE8795B), Color(0xFFB5C0A8), Color(0xFF343B36), Color(0xFFE2B978))
         layout.slotRects().forEachIndexed { index, rect ->
             val left = rect.left * size.width + gap
             val top = rect.top * size.height + gap
@@ -314,7 +347,7 @@ private fun LayoutArtwork(layout: LayoutStyle, modifier: Modifier = Modifier) {
             val height = (rect.height * size.height - gap * 2).coerceAtLeast(2f)
             drawRoundRect(palette[index % palette.size], androidx.compose.ui.geometry.Offset(left, top),
                 androidx.compose.ui.geometry.Size(width, height), androidx.compose.ui.geometry.CornerRadius(5.dp.toPx()))
-            drawRoundRect(Color.White.copy(alpha = .12f), androidx.compose.ui.geometry.Offset(left, top),
+            drawRoundRect(Color.White.copy(alpha = .3f), androidx.compose.ui.geometry.Offset(left, top),
                 androidx.compose.ui.geometry.Size(width, height), androidx.compose.ui.geometry.CornerRadius(5.dp.toPx()), style = Stroke(1.dp.toPx()))
         }
     }
@@ -322,29 +355,22 @@ private fun LayoutArtwork(layout: LayoutStyle, modifier: Modifier = Modifier) {
 
 @Composable
 private fun CarouselCard(template: ScrlTemplate, onClick: () -> Unit) {
-    Surface(onClick = onClick, color = StudioPanel, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, StudioLine), modifier = Modifier.width(220.dp)) {
+    Surface(onClick = onClick, color = CardPaper, shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Hairline), modifier = Modifier.width(220.dp)) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth().height(92.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 repeat(template.slides.coerceAtMost(5)) { index ->
                     Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(5.dp))
-                        .background(listOf(Color(0xFF536B55), Color(0xFFB78B68), Color(0xFF687C78), Color(0xFFD1BFA0), Color(0xFF465747))[index]))
+                        .background(listOf(Color(0xFF536B55), Color(0xFFE8795B), Color(0xFF3157F6), Color(0xFFE2B978), Color(0xFF465747))[index]))
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(template.label, color = StudioCream, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text("\${template.slides} seamless slides", color = StudioMuted, fontSize = 10.sp)
+                    Text(template.label, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(template.slides.toString() + " seamless slides", color = MutedInk, fontSize = 10.sp)
                 }
-                Icon(Icons.Default.ArrowOutward, null, tint = StudioLime, modifier = Modifier.size(17.dp))
+                Icon(Icons.Default.ArrowOutward, null, tint = Blue, modifier = Modifier.size(17.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun BottomNavItem(icon: ImageVector, label: String, selected: Boolean) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Icon(icon, null, tint = if (selected) StudioLime else StudioMuted, modifier = Modifier.size(19.dp))
-        Text(label, color = if (selected) StudioLime else StudioMuted, fontSize = 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
