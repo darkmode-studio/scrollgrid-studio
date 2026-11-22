@@ -1005,7 +1005,7 @@ fun StudioScreen(
                         }
                     }
 
-                    // SCRL Floating Action Pill (Delete / Duplicate / Lock) at top center of viewport when an item is selected
+                    // Adaptive floating actions positioned beside the selected item
                     if (selMedia != null || selOverlay != null) {
                         val selectedCenter = when {
                             selOverlay != null -> selOverlay.xFraction to selOverlay.yFraction
@@ -1016,18 +1016,18 @@ fun StudioScreen(
                                 ?: (0.5f to 0.5f)
                             else -> selMedia.freeX to selMedia.freeY
                         }
-                        val toolbarAlignment = when {
-                            selectedCenter.second < 0.5f && selectedCenter.first < 0.5f -> Alignment.TopEnd
-                            selectedCenter.second < 0.5f -> Alignment.TopStart
-                            selectedCenter.first < 0.5f -> Alignment.BottomEnd
-                            else -> Alignment.BottomStart
-                        }
+                        val toolbarX = (
+                            maxWidth * selectedCenter.first + if (selectedCenter.first < 0.5f) 12.dp else -124.dp
+                        ).coerceIn(8.dp, (maxWidth - 120.dp).coerceAtLeast(8.dp))
+                        val toolbarY = (
+                            maxHeight * selectedCenter.second + if (selectedCenter.second < 0.5f) 12.dp else -52.dp
+                        ).coerceIn(8.dp, (maxHeight - 48.dp).coerceAtLeast(8.dp))
                         Surface(
                             color = BgElevated.copy(alpha = 0.96f),
                             shape = RoundedCornerShape(22.dp),
                             border = BorderStroke(1.dp, BorderSubtle),
                             shadowElevation = 6.dp,
-                            modifier = Modifier.align(toolbarAlignment).padding(8.dp)
+                            modifier = Modifier.align(Alignment.TopStart).offset(x = toolbarX, y = toolbarY)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
