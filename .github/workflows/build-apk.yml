@@ -67,6 +67,7 @@ jobs:
           retention-days: 30
 
       - name: Publish Direct APK to GitHub Releases
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v1.0.${{ github.run_number }}

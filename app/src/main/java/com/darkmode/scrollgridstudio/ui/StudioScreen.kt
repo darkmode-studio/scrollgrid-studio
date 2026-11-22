@@ -1,6 +1,7 @@
 package com.darkmode.scrollgridstudio.ui
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -57,7 +58,10 @@ import com.darkmode.scrollgridstudio.data.DraftStorage
 import com.darkmode.scrollgridstudio.export.CollageExporter
 import com.darkmode.scrollgridstudio.export.ExportResult
 import com.darkmode.scrollgridstudio.model.*
+import com.darkmode.scrollgridstudio.ui.theme.LocalScrollGridPalette
+import com.darkmode.scrollgridstudio.ui.theme.ThemePreference
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -65,15 +69,34 @@ import kotlin.math.roundToInt
 
 private enum class AppScreen { HOME, EDITOR, PREVIEW }
 
-private val BgCanvas = Color(0xFF0B0D10)
-private val BgPanel = Color(0xFF14171D)
-private val BgElevated = Color(0xFF1B2029)
-private val BorderSubtle = Color(0xFF242933)
-private val AccentGreen = Color(0xFF22C55E)
+private enum class EditorSection(val label: String, val icon: ImageVector, val defaultTab: StudioTab) {
+    ARRANGE("Arrange", Icons.Default.GridView, StudioTab.LAYOUT),
+    ADJUST("Adjust", Icons.Default.Tune, StudioTab.CONTROLS),
+    DESIGN("Design", Icons.Default.Palette, StudioTab.TEXT);
+
+    val tabs: List<StudioTab>
+        get() = when (this) {
+            ARRANGE -> listOf(StudioTab.LAYOUT, StudioTab.FREESTYLE)
+            ADJUST -> listOf(StudioTab.CONTROLS, StudioTab.STYLE)
+            DESIGN -> listOf(StudioTab.TEXT, StudioTab.CREATIVE)
+        }
+}
+
+private fun editorSectionFor(tab: StudioTab): EditorSection = when (tab) {
+    StudioTab.LAYOUT, StudioTab.FREESTYLE -> EditorSection.ARRANGE
+    StudioTab.CONTROLS, StudioTab.STYLE -> EditorSection.ADJUST
+    StudioTab.TEXT, StudioTab.CREATIVE -> EditorSection.DESIGN
+}
+
+private val BgCanvas: Color @Composable get() = LocalScrollGridPalette.current.canvas
+private val BgPanel: Color @Composable get() = LocalScrollGridPalette.current.panel
+private val BgElevated: Color @Composable get() = LocalScrollGridPalette.current.elevated
+private val BorderSubtle: Color @Composable get() = LocalScrollGridPalette.current.border
+private val AccentGreen: Color @Composable get() = LocalScrollGridPalette.current.accent
 private val CyanGuide = Color(0xFF38BDF8)
-private val DangerRed = Color(0xFFEF4444)
-private val TextPrimary = Color(0xFFF3F4F6)
-private val TextSecondary = Color(0xFF9CA3AF)
+private val DangerRed: Color @Composable get() = LocalScrollGridPalette.current.danger
+private val TextPrimary: Color @Composable get() = LocalScrollGridPalette.current.textPrimary
+private val TextSecondary: Color @Composable get() = LocalScrollGridPalette.current.textSecondary
 
 private val DefaultPhotoPalette = listOf(
     0xFFF3F4F6L,
@@ -118,7 +141,10 @@ private fun bestLayoutForCount(count: Int): LayoutStyle = when {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StudioScreen() {
+fun StudioScreen(
+    themePreference: ThemePreference,
+    onThemePreferenceChange: (ThemePreference) -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -131,7 +157,7 @@ fun StudioScreen() {
 
     var showRatioMenu by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
-    var showTrayPanel by remember { mutableStateOf(true) }
+    var showTrayPanel by remember { mutableStateOf(false) }
     var controlsScopeAll by remember { mutableStateOf(true) }
     var layoutSearchQuery by remember { mutableStateOf("") }
     var layoutCountFilter by remember { mutableStateOf<Int?>(null) }
@@ -142,6 +168,19 @@ fun StudioScreen() {
     var isExporting by remember { mutableStateOf(false) }
     var lastExportResult by remember { mutableStateOf<ExportResult?>(null) }
     var statusBanner by remember { mutableStateOf("ScrollGrid Studio • Ready") }
+
+    fun retainPickerUri(uri: Uri) {
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+    }
+
+    LaunchedEffect(state, currentScreen) {
+        if (currentScreen == AppScreen.EDITOR && (state.slots.isNotEmpty() || state.extras.isNotEmpty() || state.overlays.isNotEmpty())) {
+            delay(850)
+            activeDraftId = DraftStorage.saveDraft(context, state, activeDraftId)
+            draftsList = DraftStorage.listDrafts(context)
+            statusBanner = "All changes saved"
+        }
+    }
 
     // Dynamically sample "From your photos" palette whenever slots change
     LaunchedEffect(state.slots.map { it.uri }) {
@@ -183,6 +222,7 @@ fun StudioScreen() {
     val homeGridPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(24)
     ) { uris: List<Uri> ->
+        uris.forEach(::retainPickerUri)
         val items = uris.mapIndexed { i, uri ->
             val mime = context.contentResolver.getType(uri) ?: ""
             MediaItem(
@@ -207,13 +247,14 @@ fun StudioScreen() {
             extras = items.drop(cap)
         )
         statusBanner = "Auto-matched ${matched.label}"
-        showTrayPanel = true
+        showTrayPanel = false
         currentScreen = AppScreen.EDITOR
     }
 
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(24)
     ) { uris: List<Uri> ->
+        uris.forEach(::retainPickerUri)
         if (uris.isNotEmpty()) {
             val existingCount = state.slots.size + state.extras.size
             val added = uris.mapIndexed { i, uri ->
@@ -245,6 +286,7 @@ fun StudioScreen() {
     val replacePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
+        uri?.let(::retainPickerUri)
         if (uri != null && state.slots.isNotEmpty()) {
             val idx = state.selectedSlotIndex.coerceIn(0, state.slots.lastIndex)
             val mime = context.contentResolver.getType(uri) ?: ""
@@ -266,6 +308,7 @@ fun StudioScreen() {
     val stickerImagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
+        uri?.let(::retainPickerUri)
         if (uri != null) {
             val newSticker = TextOverlay(
                 id = UUID.randomUUID().toString(),
@@ -405,6 +448,8 @@ fun StudioScreen() {
         AppScreen.HOME -> {
             HomeHubScreen(
                 drafts = draftsList,
+                themePreference = themePreference,
+                onThemePreferenceChange = onThemePreferenceChange,
                 onStartPhotoGrid = {
                     homeGridPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                 },
@@ -414,7 +459,7 @@ fun StudioScreen() {
                     redoStack = emptyList()
                     state = StudioState(projectName = "Carousel ($slides slides)", mode = StudioMode.CAROUSEL, carouselSlides = slides)
                     statusBanner = "New $slides-slide SCRL carousel"
-                    showTrayPanel = true
+                    showTrayPanel = false
                     currentScreen = AppScreen.EDITOR
                 },
                 onStartFreeform = {
@@ -423,12 +468,12 @@ fun StudioScreen() {
                     redoStack = emptyList()
                     state = StudioState(projectName = "Freeform Collage", mode = StudioMode.FREESTYLE)
                     statusBanner = "New freeform canvas"
-                    showTrayPanel = true
+                    showTrayPanel = false
                     currentScreen = AppScreen.EDITOR
                 },
                 onSelectScrlTemplate = { tpl ->
                     applyScrlTemplate(tpl, resetProject = true)
-                    showTrayPanel = true
+                    showTrayPanel = false
                     currentScreen = AppScreen.EDITOR
                 },
                 onSelectGridTemplate = { layout ->
@@ -437,7 +482,7 @@ fun StudioScreen() {
                     redoStack = emptyList()
                     state = StudioState(projectName = layout.label, mode = StudioMode.GRID, layout = layout)
                     statusBanner = "Started ${layout.label}"
-                    showTrayPanel = true
+                    showTrayPanel = false
                     currentScreen = AppScreen.EDITOR
                 },
                 onOpenDraft = { draft ->
@@ -448,7 +493,7 @@ fun StudioScreen() {
                         redoStack = emptyList()
                         state = loaded
                         statusBanner = "Opened '${loaded.projectName}'"
-                        showTrayPanel = true
+                        showTrayPanel = false
                         currentScreen = AppScreen.EDITOR
                     }
                 },
@@ -472,6 +517,7 @@ fun StudioScreen() {
         }
 
         AppScreen.EDITOR -> {
+            val activeSection = editorSectionFor(state.activeTab)
             val selMedia = state.slots.getOrNull(state.selectedSlotIndex)
             val selOverlay = state.overlays.find { it.id == state.selectedOverlayId }
 
@@ -486,9 +532,9 @@ fun StudioScreen() {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(60.dp)
                         .background(BgPanel)
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -509,7 +555,7 @@ fun StudioScreen() {
                     Box {
                         Surface(
                             onClick = { showRatioMenu = true },
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = BgElevated,
                             border = BorderStroke(1.dp, BorderSubtle)
                         ) {
@@ -552,6 +598,13 @@ fun StudioScreen() {
                                 )
                             }
                         }
+                    }
+
+                    IconButton(
+                        onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.AddPhotoAlternate, "Add photo", tint = AccentGreen, modifier = Modifier.size(19.dp))
                     }
 
                     Spacer(Modifier.weight(1f))
@@ -606,7 +659,11 @@ fun StudioScreen() {
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(BgPanel)
+                        .border(1.dp, Color(0xFFE0DED5), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     val density = LocalDensity.current
@@ -640,9 +697,10 @@ fun StudioScreen() {
                             modifier = Modifier
                                 .width(totalCanvasWidthDp)
                                 .height(slideHeightDp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .then(bgModifier)
-                                .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
+                                .shadow(18.dp, RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0xFF394653), RoundedCornerShape(16.dp))
                         ) {
                             if (state.customBgHex == null && bg.isBlurPhoto && state.slots.isNotEmpty()) {
                                 AsyncImage(
@@ -947,14 +1005,29 @@ fun StudioScreen() {
                         }
                     }
 
-                    // SCRL Floating Action Pill (Delete / Duplicate / Lock) at top center of viewport when an item is selected
+                    // Adaptive floating actions positioned beside the selected item
                     if (selMedia != null || selOverlay != null) {
+                        val selectedCenter = when {
+                            selOverlay != null -> selOverlay.xFraction to selOverlay.yFraction
+                            selMedia == null -> 0.5f to 0.5f
+                            state.mode == StudioMode.GRID -> state.layout.slotRects()
+                                .getOrNull(state.selectedSlotIndex)
+                                ?.let { (it.left + it.width / 2f) to (it.top + it.height / 2f) }
+                                ?: (0.5f to 0.5f)
+                            else -> selMedia.freeX to selMedia.freeY
+                        }
+                        val toolbarX = (
+                            maxWidth * selectedCenter.first + if (selectedCenter.first < 0.5f) 12.dp else -124.dp
+                        ).coerceIn(8.dp, (maxWidth - 120.dp).coerceAtLeast(8.dp))
+                        val toolbarY = (
+                            maxHeight * selectedCenter.second + if (selectedCenter.second < 0.5f) 12.dp else -52.dp
+                        ).coerceIn(8.dp, (maxHeight - 48.dp).coerceAtLeast(8.dp))
                         Surface(
                             color = BgElevated.copy(alpha = 0.96f),
                             shape = RoundedCornerShape(22.dp),
                             border = BorderStroke(1.dp, BorderSubtle),
                             shadowElevation = 6.dp,
-                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp)
+                            modifier = Modifier.align(Alignment.TopStart).offset(x = toolbarX, y = toolbarY)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -1122,10 +1195,36 @@ fun StudioScreen() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(max = 310.dp)
+                            .verticalScroll(rememberScrollState())
                             .background(BgPanel)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(13.dp)
                     ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            activeSection.tabs.forEach { tab ->
+                                val selectedSubtab = state.activeTab == tab
+                                Surface(
+                                    onClick = { state = state.copy(activeTab = tab) },
+                                    color = if (selectedSubtab) BgElevated else BgCanvas,
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, if (selectedSubtab) AccentGreen.copy(alpha = 0.45f) else BorderSubtle)
+                                ) {
+                                    Text(
+                                        tab.label,
+                                        color = if (selectedSubtab) AccentGreen else TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (selectedSubtab) FontWeight.SemiBold else FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         when (state.activeTab) {
                             StudioTab.LAYOUT -> {
                                 // Header with 'X' close button
@@ -1134,7 +1233,7 @@ fun StudioScreen() {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Layouts", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text("Layout library", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.25).sp)
                                     IconButton(onClick = { showTrayPanel = false }, modifier = Modifier.size(26.dp)) {
                                         Icon(Icons.Default.Close, "Close", tint = TextSecondary, modifier = Modifier.size(18.dp))
                                     }
@@ -1147,8 +1246,8 @@ fun StudioScreen() {
                                     placeholder = { Text("Search layouts...", fontSize = 12.sp, color = TextSecondary) },
                                     leadingIcon = { Icon(Icons.Default.Search, null, tint = TextSecondary, modifier = Modifier.size(17.dp)) },
                                     singleLine = true,
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.fillMaxWidth().height(54.dp)
                                 )
 
                                 // Photo Count Filter Chips: All, 1, 2, 3, 4, 5, 6, 7+
@@ -1161,22 +1260,35 @@ fun StudioScreen() {
                                         onClick = { layoutCountFilter = null },
                                         label = { Text("All", fontSize = 11.sp) }
                                     )
-                                    listOf(1, 2, 3, 4, 5, 6, 9).forEach { cnt ->
+                                    listOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12).forEach { cnt ->
                                         FilterChip(
                                             selected = layoutCountFilter == cnt,
                                             onClick = { layoutCountFilter = if (layoutCountFilter == cnt) null else cnt },
-                                            label = { Text(if (cnt == 9) "7+" else "$cnt", fontSize = 11.sp) }
+                                            label = { Text("$cnt", fontSize = 11.sp) }
+                                        )
+                                    }
+                                    listOf(16, 20).forEach { cnt ->
+                                        FilterChip(
+                                            selected = layoutCountFilter == cnt,
+                                            onClick = { layoutCountFilter = if (layoutCountFilter == cnt) null else cnt },
+                                            label = { Text("$cnt+", fontSize = 11.sp) }
                                         )
                                     }
                                 }
 
                                 // Filtered Visual Wireframe Row
+                                val recommendedCount = (state.slots.size + state.extras.size).takeIf { it > 0 }
+                                val selectedCount = layoutCountFilter
                                 val filtered = LayoutStyle.entries.filter { layout ->
                                     val matchQuery = layoutSearchQuery.isBlank() ||
                                         layout.label.contains(layoutSearchQuery, ignoreCase = true) ||
                                         layout.category.contains(layoutSearchQuery, ignoreCase = true)
-                                    val matchCount = layoutCountFilter == null || layout.slotCount == layoutCountFilter
+                                    val matchCount = selectedCount == null ||
+                                        if (selectedCount >= 16) layout.slotCount >= selectedCount else layout.slotCount == selectedCount
                                     matchQuery && matchCount
+                                }.sortedBy { layout ->
+                                    if (recommendedCount == null || selectedCount != null) 0
+                                    else kotlin.math.abs(layout.slotCount - recommendedCount)
                                 }
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(filtered) { layout ->
@@ -1242,9 +1354,9 @@ fun StudioScreen() {
                                         ).forEach { (label, gap, rad) ->
                                             val active = state.borderDp == gap && state.cornerRadiusDp == rad
                                             Surface(
-                                                onClick = { pushState(state.copy(borderDp = gap, outerMarginDp = gap, cornerRadiusDp = rad)) },
+                                                onClick = { pushState(state.copy(borderDp = gap, cornerRadiusDp = rad)) },
                                                 shape = RoundedCornerShape(18.dp),
-                                                color = if (active) Color(0xFF1A2E22) else BgCanvas,
+                                                color = if (active) BgElevated else BgCanvas,
                                                 border = BorderStroke(1.dp, if (active) AccentGreen else BorderSubtle),
                                                 modifier = Modifier.weight(1f)
                                             ) {
@@ -1266,7 +1378,14 @@ fun StudioScreen() {
                                         value = state.borderDp.toFloat(),
                                         range = 0f..36f,
                                         valueText = "${state.borderDp}",
-                                        onValueChange = { state = state.copy(borderDp = it.roundToInt(), outerMarginDp = it.roundToInt()) }
+                                        onValueChange = { state = state.copy(borderDp = it.roundToInt()) }
+                                    )
+                                    SliderWithValue(
+                                        label = "Outer margin",
+                                        value = state.outerMarginDp.toFloat(),
+                                        range = 0f..48f,
+                                        valueText = "${state.outerMarginDp}",
+                                        onValueChange = { state = state.copy(outerMarginDp = it.roundToInt()) }
                                     )
                                     // Corner Radius Slider + Value
                                     SliderWithValue(
@@ -1457,7 +1576,7 @@ fun StudioScreen() {
                                                 }
                                             },
                                             shape = RoundedCornerShape(18.dp),
-                                            color = if (selected) Color(0xFF1A2E22) else BgCanvas,
+                                            color = if (selected) BgElevated else BgCanvas,
                                             border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
                                         ) {
                                             Text(
@@ -1582,7 +1701,7 @@ fun StudioScreen() {
                                         Surface(
                                             onClick = { applyLayoutCapacity(mode, state.layout, state.carouselSlides) },
                                             shape = RoundedCornerShape(10.dp),
-                                            color = if (selected) Color(0xFF1A2E22) else BgCanvas,
+                                            color = if (selected) BgElevated else BgCanvas,
                                             border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle),
                                             modifier = Modifier.weight(1f)
                                         ) {
@@ -1628,41 +1747,35 @@ fun StudioScreen() {
 
                 HorizontalDivider(thickness = 1.dp, color = BorderSubtle)
 
-                // 4. Reference-Style 6-Tab Bottom Dock (Layout, Controls, Style, Text, Creative, Freestyle)
+                // 4. Compact three-section dock; sub-tabs keep every existing tool panel accessible.
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(58.dp).background(BgPanel).padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier.fillMaxWidth().height(62.dp).background(BgPanel).padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    StudioTab.entries.forEach { tab ->
-                        val selected = state.activeTab == tab && showTrayPanel
-                        val icon: ImageVector = when (tab) {
-                            StudioTab.LAYOUT -> Icons.Default.GridView
-                            StudioTab.CONTROLS -> Icons.Default.Tune
-                            StudioTab.STYLE -> Icons.Default.Style
-                            StudioTab.TEXT -> Icons.Default.Title
-                            StudioTab.CREATIVE -> Icons.Default.Palette
-                            StudioTab.FREESTYLE -> Icons.Default.DashboardCustomize
-                        }
+                    EditorSection.entries.forEach { section ->
+                        val selected = activeSection == section
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (selected) Color(0xFF1A2E22) else Color.Transparent)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (selected) BgElevated else Color.Transparent)
+                                .border(if (selected) 1.dp else 0.dp, if (selected) AccentGreen.copy(alpha = 0.35f) else Color.Transparent, RoundedCornerShape(12.dp))
                                 .clickable {
-                                    if (state.activeTab == tab) {
+                                    if (activeSection == section) {
                                         showTrayPanel = !showTrayPanel
                                     } else {
-                                        state = state.copy(activeTab = tab)
+                                        state = state.copy(activeTab = section.defaultTab)
                                         showTrayPanel = true
                                     }
                                 }
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 5.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Icon(icon, tab.label, tint = if (selected) AccentGreen else TextSecondary, modifier = Modifier.size(19.dp))
-                            Text(tab.label, color = if (selected) AccentGreen else TextSecondary, fontSize = 10.sp)
+                            Icon(section.icon, section.label, tint = if (selected) AccentGreen else TextSecondary, modifier = Modifier.size(20.dp))
+                            Text(section.label, color = if (selected) AccentGreen else TextSecondary, fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
                         }
                     }
                 }
@@ -1748,7 +1861,7 @@ private fun SliderWithValue(
             onValueChange = onValueChange,
             valueRange = range,
             colors = SliderDefaults.colors(
-                thumbColor = TextPrimary,
+                thumbColor = AccentGreen,
                 activeTrackColor = AccentGreen,
                 inactiveTrackColor = BorderSubtle
             ),
@@ -1762,9 +1875,10 @@ private fun LayoutThumbnailChip(layout: LayoutStyle, selected: Boolean, onClick:
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(10.dp),
-        color = if (selected) Color(0xFF1A2E22) else BgCanvas,
+        color = if (selected) BgElevated else BgCanvas,
         border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
     ) {
+        val thumbnailColor = if (selected) AccentGreen else TextSecondary
         Column(
             modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1773,7 +1887,7 @@ private fun LayoutThumbnailChip(layout: LayoutStyle, selected: Boolean, onClick:
             Canvas(modifier = Modifier.size(30.dp)) {
                 layout.slotRects().forEach { r ->
                     drawRect(
-                        color = if (selected) AccentGreen else TextSecondary,
+                        color = thumbnailColor,
                         topLeft = Offset(r.left * size.width + 1f, r.top * size.height + 1f),
                         size = Size((r.width * size.width - 2f).coerceAtLeast(2f), (r.height * size.height - 2f).coerceAtLeast(2f)),
                         style = Stroke(width = 1.5f)
@@ -1878,7 +1992,7 @@ private fun ExportOptionsSheetContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Photo Export Options", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-            Surface(color = Color(0xFF1A2E22), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, AccentGreen)) {
+            Surface(color = BgElevated, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, AccentGreen)) {
                 Text("${w} × ${h} px • sRGB", color = AccentGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             }
         }

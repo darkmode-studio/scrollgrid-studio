@@ -97,6 +97,11 @@ object DraftStorage {
             put("mode", state.mode.name)
             put("layout", state.layout.name)
             put("carouselSlides", state.carouselSlides)
+            put("activeSlideIndex", state.activeSlideIndex)
+            put("showGuides", state.showGuides)
+            put("canvasLocked", state.canvasLocked)
+            put("activeTab", state.activeTab.name)
+            put("selectedSlotIndex", state.selectedSlotIndex)
             put("outerMarginDp", state.outerMarginDp)
             put("borderDp", state.borderDp)
             put("cornerRadiusDp", state.cornerRadiusDp)
@@ -108,33 +113,18 @@ object DraftStorage {
             put("resolution", state.exportConfig.resolution.name)
             put("format", state.exportConfig.format.name)
             put("quality", state.exportConfig.qualityPercent)
+            put("exportMode", state.exportConfig.mode.name)
+            put("slideOrder", state.exportConfig.slideOrder.name)
+            put("selectedSlideNumber", state.exportConfig.selectedSlideNumber)
+            put("customWidthPx", state.exportConfig.customWidthPx)
+            put("customHeightPx", state.exportConfig.customHeightPx)
+            put("stripExif", state.exportConfig.stripExif)
+            put("includeSignature", state.exportConfig.includeSignature)
+            put("signatureText", state.exportConfig.signatureText)
+            put("extras", JSONArray().apply { state.extras.forEach { put(serializeMediaItem(it)) } })
 
             val slotsArr = JSONArray()
-            state.slots.forEach { item ->
-                slotsArr.put(JSONObject().apply {
-                    put("id", item.id)
-                    put("uri", item.uri.toString())
-                    put("isVideo", item.isVideo)
-                    put("scale", item.scale.toDouble())
-                    put("panX", item.panX.toDouble())
-                    put("panY", item.panY.toDouble())
-                    put("rotationDeg", item.rotationDeg.toDouble())
-                    put("flipHorizontal", item.flipHorizontal)
-                    put("fitInside", item.fitInside)
-                    put("brightness", item.brightness.toDouble())
-                    put("contrast", item.contrast.toDouble())
-                    put("saturation", item.saturation.toDouble())
-                    put("warmth", item.warmth.toDouble())
-                    put("vignette", item.vignette.toDouble())
-                    put("freeX", item.freeX.toDouble())
-                    put("freeY", item.freeY.toDouble())
-                    put("freeW", item.freeW.toDouble())
-                    put("freeH", item.freeH.toDouble())
-                    put("zIndex", item.zIndex)
-                    put("shadowDp", item.shadowDp)
-                    put("maskShape", item.maskShape.name)
-                })
-            }
+            state.slots.forEach { slotsArr.put(serializeMediaItem(it)) }
             put("slots", slotsArr)
 
             val ovArr = JSONArray()
@@ -154,45 +144,45 @@ object DraftStorage {
                     put("opacity", ov.opacity.toDouble())
                     put("isSticker", ov.isSticker)
                     put("stickerUri", ov.stickerUri?.toString() ?: "")
+                    put("useOutline", ov.useOutline)
+                    put("stickerSizeFraction", ov.stickerSizeFraction.toDouble())
                 })
             }
             put("overlays", ovArr)
         }
     }
 
+    private fun serializeMediaItem(item: MediaItem): JSONObject = JSONObject().apply {
+        put("id", item.id); put("uri", item.uri.toString()); put("isVideo", item.isVideo)
+        put("scale", item.scale.toDouble()); put("panX", item.panX.toDouble()); put("panY", item.panY.toDouble())
+        put("rotationDeg", item.rotationDeg.toDouble()); put("flipHorizontal", item.flipHorizontal); put("fitInside", item.fitInside)
+        put("brightness", item.brightness.toDouble()); put("contrast", item.contrast.toDouble()); put("saturation", item.saturation.toDouble())
+        put("warmth", item.warmth.toDouble()); put("vignette", item.vignette.toDouble())
+        put("freeX", item.freeX.toDouble()); put("freeY", item.freeY.toDouble()); put("freeW", item.freeW.toDouble()); put("freeH", item.freeH.toDouble())
+        put("zIndex", item.zIndex); put("locked", item.locked); put("opacity", item.opacity.toDouble())
+        put("shadowDp", item.shadowDp); put("maskShape", item.maskShape.name)
+    }
+
+    private fun deserializeMediaItem(s: JSONObject, index: Int): MediaItem? {
+        val uriStr = s.optString("uri")
+        if (uriStr.isBlank()) return null
+        return MediaItem(
+            id = s.optString("id", UUID.randomUUID().toString()), uri = Uri.parse(uriStr), isVideo = s.optBoolean("isVideo", false),
+            scale = s.optDouble("scale", 1.0).toFloat(), panX = s.optDouble("panX", 0.0).toFloat(), panY = s.optDouble("panY", 0.0).toFloat(),
+            rotationDeg = s.optDouble("rotationDeg", 0.0).toFloat(), flipHorizontal = s.optBoolean("flipHorizontal", false), fitInside = s.optBoolean("fitInside", false),
+            brightness = s.optDouble("brightness", 0.0).toFloat(), contrast = s.optDouble("contrast", 1.0).toFloat(), saturation = s.optDouble("saturation", 1.0).toFloat(),
+            warmth = s.optDouble("warmth", 0.0).toFloat(), vignette = s.optDouble("vignette", 0.0).toFloat(),
+            freeX = s.optDouble("freeX", 0.25).toFloat(), freeY = s.optDouble("freeY", 0.25).toFloat(), freeW = s.optDouble("freeW", 0.42).toFloat(), freeH = s.optDouble("freeH", 0.42).toFloat(),
+            zIndex = s.optInt("zIndex", index), locked = s.optBoolean("locked", false), opacity = s.optDouble("opacity", 1.0).toFloat(),
+            shadowDp = s.optInt("shadowDp", 10), maskShape = runCatching { TileMaskShape.valueOf(s.optString("maskShape")) }.getOrDefault(TileMaskShape.RECTANGLE)
+        )
+    }
+
     private fun deserializeState(obj: JSONObject): StudioState {
-        val slots = mutableListOf<MediaItem>()
         val sArr = obj.optJSONArray("slots") ?: JSONArray()
-        for (i in 0 until sArr.length()) {
-            val s = sArr.getJSONObject(i)
-            val uriStr = s.optString("uri")
-            if (uriStr.isBlank()) continue
-            slots.add(
-                MediaItem(
-                    id = s.optString("id", UUID.randomUUID().toString()),
-                    uri = Uri.parse(uriStr),
-                    isVideo = s.optBoolean("isVideo", false),
-                    scale = s.optDouble("scale", 1.0).toFloat(),
-                    panX = s.optDouble("panX", 0.0).toFloat(),
-                    panY = s.optDouble("panY", 0.0).toFloat(),
-                    rotationDeg = s.optDouble("rotationDeg", 0.0).toFloat(),
-                    flipHorizontal = s.optBoolean("flipHorizontal", false),
-                    fitInside = s.optBoolean("fitInside", false),
-                    brightness = s.optDouble("brightness", 0.0).toFloat(),
-                    contrast = s.optDouble("contrast", 1.0).toFloat(),
-                    saturation = s.optDouble("saturation", 1.0).toFloat(),
-                    warmth = s.optDouble("warmth", 0.0).toFloat(),
-                    vignette = s.optDouble("vignette", 0.0).toFloat(),
-                    freeX = s.optDouble("freeX", 0.25).toFloat(),
-                    freeY = s.optDouble("freeY", 0.25).toFloat(),
-                    freeW = s.optDouble("freeW", 0.42).toFloat(),
-                    freeH = s.optDouble("freeH", 0.42).toFloat(),
-                    zIndex = s.optInt("zIndex", i),
-                    shadowDp = s.optInt("shadowDp", 10),
-                    maskShape = runCatching { TileMaskShape.valueOf(s.optString("maskShape")) }.getOrDefault(TileMaskShape.RECTANGLE)
-                )
-            )
-        }
+        val slots = (0 until sArr.length()).mapNotNull { i -> deserializeMediaItem(sArr.optJSONObject(i) ?: JSONObject(), i) }
+        val eArr = obj.optJSONArray("extras") ?: JSONArray()
+        val extras = (0 until eArr.length()).mapNotNull { i -> deserializeMediaItem(eArr.optJSONObject(i) ?: JSONObject(), i) }
 
         val overlays = mutableListOf<TextOverlay>()
         val oArr = obj.optJSONArray("overlays") ?: JSONArray()
@@ -214,7 +204,9 @@ object DraftStorage {
                     alignment = runCatching { TextAlignOption.valueOf(o.optString("alignment")) }.getOrDefault(TextAlignOption.CENTER),
                     opacity = o.optDouble("opacity", 1.0).toFloat(),
                     isSticker = o.optBoolean("isSticker", false),
-                    stickerUri = if (stickerStr.isNotBlank()) Uri.parse(stickerStr) else null
+                    stickerUri = if (stickerStr.isNotBlank()) Uri.parse(stickerStr) else null,
+                    useOutline = o.optBoolean("useOutline", true),
+                    stickerSizeFraction = o.optDouble("stickerSizeFraction", 0.22).toFloat()
                 )
             )
         }
@@ -234,13 +226,27 @@ object DraftStorage {
             customBgHex = customBg,
             borderColorHex = borderCol,
             canvasTexture = runCatching { CanvasTexture.valueOf(obj.optString("canvasTexture")) }.getOrDefault(CanvasTexture.NONE),
+            activeSlideIndex = obj.optInt("activeSlideIndex", 0),
+            showGuides = obj.optBoolean("showGuides", true),
+            canvasLocked = obj.optBoolean("canvasLocked", false),
+            activeTab = runCatching { StudioTab.valueOf(obj.optString("activeTab")) }.getOrDefault(StudioTab.LAYOUT),
+            selectedSlotIndex = obj.optInt("selectedSlotIndex", 0).coerceAtLeast(0),
             slots = slots,
+            extras = extras,
             overlays = overlays,
             exportConfig = ExportConfig(
+                mode = runCatching { ExportMode.valueOf(obj.optString("exportMode")) }.getOrDefault(ExportMode.AUTO_SLICE),
+                slideOrder = runCatching { SlideOrder.valueOf(obj.optString("slideOrder")) }.getOrDefault(SlideOrder.FORWARD),
+                selectedSlideNumber = obj.optInt("selectedSlideNumber", 1),
                 aspectRatio = runCatching { AspectRatioOption.valueOf(obj.optString("aspectRatio")) }.getOrDefault(AspectRatioOption.PORTRAIT_4_5),
                 resolution = runCatching { ResolutionPreset.valueOf(obj.optString("resolution")) }.getOrDefault(ResolutionPreset.IG_1080),
                 format = runCatching { ExportFormat.valueOf(obj.optString("format")) }.getOrDefault(ExportFormat.JPG),
-                qualityPercent = obj.optInt("quality", 95)
+                qualityPercent = obj.optInt("quality", 95),
+                customWidthPx = obj.optInt("customWidthPx", 1080),
+                customHeightPx = obj.optInt("customHeightPx", 1350),
+                stripExif = obj.optBoolean("stripExif", true),
+                includeSignature = obj.optBoolean("includeSignature", false),
+                signatureText = obj.optString("signatureText", "@sandeep_njr")
             )
         )
     }

@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.*
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -36,9 +37,13 @@ object CollageExporter {
         } else {
             1
         }
-        val totalWidth = slideW * totalSlides
-
-        val master = Bitmap.createBitmap(totalWidth, slideH, Bitmap.Config.ARGB_8888)
+        val totalWidthLong = slideW.toLong() * totalSlides.toLong()
+        val totalPixels = totalWidthLong * slideH.toLong()
+        // Refuse allocations that can exceed practical Android heap limits instead of crashing the app.
+        if (totalWidthLong > 32768L || totalPixels > 48_000_000L) return null
+        val totalWidth = totalWidthLong.toInt()
+        val master = try { Bitmap.createBitmap(totalWidth, slideH, Bitmap.Config.ARGB_8888) }
+        catch (_: OutOfMemoryError) { return null }
         val canvas = Canvas(master)
 
         drawBackground(context, canvas, state, totalWidth, slideH)
@@ -460,28 +465,29 @@ object CollageExporter {
 
     private fun decodeMediaBitmap(context: Context, uri: Uri, reqW: Int, reqH: Int): Bitmap? {
         return try {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, bounds)
+            val mime = context.contentResolver.getType(uri).orEmpty()
+            if (mime.startsWith("video/")) {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, uri)
+                    val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: return null
+                    val maxW = reqW.coerceAtLeast(1)
+                    val maxH = reqH.coerceAtLeast(1)
+                    val factor = minOf(1f, maxW.toFloat() / frame.width, maxH.toFloat() / frame.height)
+                    if (factor < 1f) Bitmap.createScaledBitmap(frame, (frame.width * factor).toInt().coerceAtLeast(1), (frame.height * factor).toInt().coerceAtLeast(1), true).also { if (it !== frame) frame.recycle() } else frame
+                } finally { retriever.release() }
+            } else {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= reqW.coerceAtLeast(1) && bounds.outHeight / (sample * 2) >= reqH.coerceAtLeast(1)) sample *= 2
+                val opts = BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                    inPreferredColorSpace = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ColorSpace.get(ColorSpace.Named.SRGB) else null
+                }
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
             }
-            var sample = 1
-            while (bounds.outWidth / (sample * 2) >= reqW.coerceAtLeast(1) &&
-                bounds.outHeight / (sample * 2) >= reqH.coerceAtLeast(1)
-            ) {
-                sample *= 2
-            }
-            val opts = BitmapFactory.Options().apply {
-                inSampleSize = sample
-                inPreferredColorSpace = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    ColorSpace.get(ColorSpace.Named.SRGB)
-                } else null
-            }
-            context.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, opts)
-            }
-        } catch (_: Exception) {
-            null
-        }
+        } catch (_: Exception) { null }
     }
 
     private fun buildColorMatrix(item: MediaItem): ColorMatrix {

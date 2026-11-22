@@ -34,13 +34,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.darkmode.scrollgridstudio.model.*
+import com.darkmode.scrollgridstudio.ui.theme.LocalScrollGridPalette
 
-private val PrevBg = Color(0xFF07090C)
-private val PrevPanel = Color(0xFF14171D)
-private val PrevBorder = Color(0xFF242933)
-private val PrevAccent = Color(0xFF22C55E)
-private val PrevText = Color(0xFFF3F4F6)
-private val PrevSubtext = Color(0xFF9CA3AF)
+private val PrevBg: Color @Composable get() = LocalScrollGridPalette.current.canvas
+private val PrevPanel: Color @Composable get() = LocalScrollGridPalette.current.panel
+private val PrevBorder: Color @Composable get() = LocalScrollGridPalette.current.border
+private val PrevAccent: Color @Composable get() = LocalScrollGridPalette.current.accent
+private val PrevText: Color @Composable get() = LocalScrollGridPalette.current.textPrimary
+private val PrevSubtext: Color @Composable get() = LocalScrollGridPalette.current.textSecondary
 
 @Composable
 fun SwipePreviewScreen(
@@ -175,7 +176,7 @@ fun SwipePreviewScreen(
                                             .offset(x = offX, y = offY)
                                             .size(width = cellW, height = cellH)
                                             .clip(shape)
-                                            .background(if (slotRect.polaroidBottomPad > 0f) Color(0xFFF3F4F6) else Color(0xFF1C232E))
+                                            .background(if (slotRect.polaroidBottomPad > 0f) Color(0xFFF3F4F6) else PrevPanel)
                                             .border(
                                                 width = if (state.borderColorHex != null) 2.dp else 0.dp,
                                                 color = state.borderColorHex?.let { Color(it) } ?: Color.Transparent,
@@ -207,7 +208,7 @@ fun SwipePreviewScreen(
                                         }
                                         .then(if (item.shadowDp > 0) Modifier.shadow(item.shadowDp.dp, shape) else Modifier)
                                         .clip(shape)
-                                        .background(Color(0xFF1C232E))
+                                        .background(PrevPanel)
                                 ) {
                                     PreviewMediaTile(item = item, modifier = Modifier.fillMaxSize())
                                 }
