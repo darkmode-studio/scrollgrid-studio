@@ -69,6 +69,25 @@ import kotlin.math.roundToInt
 
 private enum class AppScreen { HOME, EDITOR, PREVIEW }
 
+private enum class EditorSection(val label: String, val icon: ImageVector, val defaultTab: StudioTab) {
+    ARRANGE("Arrange", Icons.Default.GridView, StudioTab.LAYOUT),
+    ADJUST("Adjust", Icons.Default.Tune, StudioTab.CONTROLS),
+    DESIGN("Design", Icons.Default.Palette, StudioTab.TEXT);
+
+    val tabs: List<StudioTab>
+        get() = when (this) {
+            ARRANGE -> listOf(StudioTab.LAYOUT, StudioTab.FREESTYLE)
+            ADJUST -> listOf(StudioTab.CONTROLS, StudioTab.STYLE)
+            DESIGN -> listOf(StudioTab.TEXT, StudioTab.CREATIVE)
+        }
+}
+
+private fun editorSectionFor(tab: StudioTab): EditorSection = when (tab) {
+    StudioTab.LAYOUT, StudioTab.FREESTYLE -> EditorSection.ARRANGE
+    StudioTab.CONTROLS, StudioTab.STYLE -> EditorSection.ADJUST
+    StudioTab.TEXT, StudioTab.CREATIVE -> EditorSection.DESIGN
+}
+
 private val BgCanvas: Color @Composable get() = LocalScrollGridPalette.current.canvas
 private val BgPanel: Color @Composable get() = LocalScrollGridPalette.current.panel
 private val BgElevated: Color @Composable get() = LocalScrollGridPalette.current.elevated
@@ -498,6 +517,7 @@ fun StudioScreen(
         }
 
         AppScreen.EDITOR -> {
+            val activeSection = editorSectionFor(state.activeTab)
             val selMedia = state.slots.getOrNull(state.selectedSlotIndex)
             val selOverlay = state.overlays.find { it.id == state.selectedOverlayId }
 
@@ -536,7 +556,7 @@ fun StudioScreen(
                         Surface(
                             onClick = { showRatioMenu = true },
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFF202833),
+                            color = BgElevated,
                             border = BorderStroke(1.dp, BorderSubtle)
                         ) {
                             Row(
@@ -1181,6 +1201,30 @@ fun StudioScreen(
                             .padding(horizontal = 18.dp, vertical = 14.dp),
                         verticalArrangement = Arrangement.spacedBy(13.dp)
                     ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            activeSection.tabs.forEach { tab ->
+                                val selectedSubtab = state.activeTab == tab
+                                Surface(
+                                    onClick = { state = state.copy(activeTab = tab) },
+                                    color = if (selectedSubtab) BgElevated else BgCanvas,
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, if (selectedSubtab) AccentGreen.copy(alpha = 0.45f) else BorderSubtle)
+                                ) {
+                                    Text(
+                                        tab.label,
+                                        color = if (selectedSubtab) AccentGreen else TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (selectedSubtab) FontWeight.SemiBold else FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         when (state.activeTab) {
                             StudioTab.LAYOUT -> {
                                 // Header with 'X' close button
@@ -1703,42 +1747,35 @@ fun StudioScreen(
 
                 HorizontalDivider(thickness = 1.dp, color = BorderSubtle)
 
-                // 4. Reference-Style 6-Tab Bottom Dock (Layout, Controls, Style, Text, Creative, Freestyle)
+                // 4. Compact three-section dock; sub-tabs keep every existing tool panel accessible.
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(62.dp).background(BgPanel).padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier.fillMaxWidth().height(62.dp).background(BgPanel).padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    StudioTab.entries.forEach { tab ->
-                        val selected = state.activeTab == tab && showTrayPanel
-                        val icon: ImageVector = when (tab) {
-                            StudioTab.LAYOUT -> Icons.Default.GridView
-                            StudioTab.CONTROLS -> Icons.Default.Tune
-                            StudioTab.STYLE -> Icons.Default.Style
-                            StudioTab.TEXT -> Icons.Default.Title
-                            StudioTab.CREATIVE -> Icons.Default.Palette
-                            StudioTab.FREESTYLE -> Icons.Default.DashboardCustomize
-                        }
+                    EditorSection.entries.forEach { section ->
+                        val selected = activeSection == section
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(if (selected) BgElevated else Color.Transparent)
                                 .border(if (selected) 1.dp else 0.dp, if (selected) AccentGreen.copy(alpha = 0.35f) else Color.Transparent, RoundedCornerShape(12.dp))
                                 .clickable {
-                                    if (state.activeTab == tab) {
+                                    if (activeSection == section) {
                                         showTrayPanel = !showTrayPanel
                                     } else {
-                                        state = state.copy(activeTab = tab)
+                                        state = state.copy(activeTab = section.defaultTab)
                                         showTrayPanel = true
                                     }
                                 }
                                 .padding(vertical = 5.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Icon(icon, tab.label, tint = if (selected) AccentGreen else TextSecondary, modifier = Modifier.size(23.dp))
-                            Text(tab.label, color = if (selected) AccentGreen else TextSecondary, fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
+                            Icon(section.icon, section.label, tint = if (selected) AccentGreen else TextSecondary, modifier = Modifier.size(20.dp))
+                            Text(section.label, color = if (selected) AccentGreen else TextSecondary, fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
                         }
                     }
                 }
