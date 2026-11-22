@@ -28,12 +28,24 @@ class StudioStateTest {
     }
 
     @Test
-    fun exportDimensionsMatchPresetAndRatio() {
-        val cfg = ExportConfig(
+    fun exportDimensionsMatchPresetAndPrintSizes() {
+        val igCfg = ExportConfig(
             resolution = ResolutionPreset.IG_1080,
             aspectRatio = AspectRatioOption.PORTRAIT_4_5
         )
-        assertEquals(1080, cfg.outputWidthPx())
-        assertEquals(1350, cfg.outputHeightPx())
+        assertEquals(1080, igCfg.outputWidthPx())
+        assertEquals(1350, igCfg.outputHeightPx())
+
+        val a4Cfg = ExportConfig(aspectRatio = AspectRatioOption.PRINT_A4)
+        assertEquals(2480, a4Cfg.outputWidthPx())
+        assertEquals(3508, a4Cfg.outputHeightPx())
+
+        val customCfg = ExportConfig(
+            aspectRatio = AspectRatioOption.CUSTOM,
+            customWidthPx = 1600,
+            customHeightPx = 900
+        )
+        assertEquals(1600, customCfg.outputWidthPx())
+        assertEquals(900, customCfg.outputHeightPx())
     }
 }

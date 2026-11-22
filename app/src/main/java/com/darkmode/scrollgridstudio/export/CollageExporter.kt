@@ -8,9 +8,11 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import com.darkmode.scrollgridstudio.model.*
+import com.darkmode.scrollgridstudio.ui.ShapePaths
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlin.random.Random
 
 data class ExportResult(
     val uris: List<Uri>,
@@ -42,14 +44,14 @@ object CollageExporter {
         drawBackground(context, canvas, state, totalWidth, slideH)
 
         val pxFactor = slideW / 360f
-        val items = state.slots
-        if (items.isNotEmpty()) {
+        if (state.slots.isNotEmpty()) {
             when (state.mode) {
                 StudioMode.GRID -> drawGridSlots(context, canvas, state, totalWidth, slideH, pxFactor)
                 StudioMode.CAROUSEL, StudioMode.FREESTYLE -> drawFreeformLayers(context, canvas, state, totalWidth, slideH, pxFactor)
             }
         }
 
+        drawCanvasTexture(canvas, state.canvasTexture, totalWidth, slideH, pxFactor)
         drawOverlays(context, canvas, state, totalWidth, slideH, pxFactor)
 
         if (cfg.includeSignature && cfg.signatureText.isNotBlank()) {
@@ -126,6 +128,10 @@ object CollageExporter {
         width: Int,
         height: Int
     ) {
+        if (state.customBgHex != null) {
+            canvas.drawColor(state.customBgHex.toInt())
+            return
+        }
         val bg = state.backgroundStyle
         if (bg.isBlurPhoto && state.slots.isNotEmpty()) {
             val tiny = decodeMediaBitmap(context, state.slots.first().uri, 48, 48)
@@ -143,8 +149,7 @@ object CollageExporter {
                 bg.startHex.toInt(), bg.endHex.toInt(),
                 Shader.TileMode.CLAMP
             )
-            val paint = Paint().apply { this.shader = shader }
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), Paint().apply { this.shader = shader })
         } else {
             canvas.drawColor(bg.startHex.toInt())
         }
@@ -169,6 +174,13 @@ object CollageExporter {
         val rects = state.layout.slotRects()
         val framePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#1C232E") }
         val polaroidPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#F3F4F6") }
+        val strokePaint = state.borderColorHex?.let { hex ->
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = hex.toInt()
+                style = Paint.Style.STROKE
+                strokeWidth = 3f * pxFactor
+            }
+        }
 
         rects.forEachIndexed { idx, slotRect ->
             val item = state.slots.getOrNull(idx) ?: return@forEachIndexed
@@ -180,14 +192,16 @@ object CollageExporter {
             if (r <= l || b <= t) return@forEachIndexed
 
             val outerRect = RectF(l, t, r, b)
+            val mask = if (item.maskShape != TileMaskShape.RECTANGLE) item.maskShape else slotRect.maskShape
+
             if (slotRect.polaroidBottomPad > 0f) {
                 canvas.drawRoundRect(outerRect, radius, radius, polaroidPaint)
                 val p = 10f * pxFactor
                 val bottomExtra = outerRect.height() * slotRect.polaroidBottomPad
                 val photoRect = RectF(l + p, t + p, r - p, b - bottomExtra)
-                drawMediaIntoRect(context, canvas, item, photoRect, radius * 0.5f, pxFactor, framePaint)
+                drawMediaIntoRect(context, canvas, item, photoRect, radius * 0.5f, pxFactor, framePaint, mask, strokePaint, false)
             } else {
-                drawMediaIntoRect(context, canvas, item, outerRect, radius, pxFactor, framePaint)
+                drawMediaIntoRect(context, canvas, item, outerRect, radius, pxFactor, framePaint, mask, strokePaint, false)
             }
         }
     }
@@ -202,6 +216,13 @@ object CollageExporter {
     ) {
         val radius = state.cornerRadiusDp * pxFactor
         val framePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#1C232E") }
+        val strokePaint = state.borderColorHex?.let { hex ->
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = hex.toInt()
+                style = Paint.Style.STROKE
+                strokeWidth = 3f * pxFactor
+            }
+        }
         val sorted = state.slots.sortedBy { it.zIndex }
         sorted.forEach { item ->
             val w = (item.freeW * totalWidth).coerceAtLeast(40f)
@@ -209,7 +230,7 @@ object CollageExporter {
             val cx = item.freeX * totalWidth
             val cy = item.freeY * totalHeight
             val rect = RectF(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
-            drawMediaIntoRect(context, canvas, item, rect, radius, pxFactor, framePaint)
+            drawMediaIntoRect(context, canvas, item, rect, radius, pxFactor, framePaint, item.maskShape, strokePaint, drawShadow = item.shadowDp > 0)
         }
     }
 
@@ -220,12 +241,28 @@ object CollageExporter {
         rect: RectF,
         radius: Float,
         pxFactor: Float,
-        framePaint: Paint
+        framePaint: Paint,
+        mask: TileMaskShape,
+        strokePaint: Paint?,
+        drawShadow: Boolean
     ) {
-        canvas.drawRoundRect(rect, radius, radius, framePaint)
+        val clipPath = ShapePaths.androidPath(mask, rect, radius)
+
+        if (drawShadow && item.shadowDp > 0) {
+            val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.argb(120, 0, 0, 0)
+                maskFilter = BlurMaskFilter((item.shadowDp * pxFactor).coerceAtLeast(2f), BlurMaskFilter.Blur.NORMAL)
+            }
+            canvas.save()
+            canvas.translate(0f, 4f * pxFactor)
+            canvas.drawPath(clipPath, shadowPaint)
+            canvas.restore()
+        }
+
+        canvas.drawPath(clipPath, framePaint)
+
         decodeMediaBitmap(context, item.uri, rect.width().toInt(), rect.height().toInt())?.let { decoded ->
             canvas.save()
-            val clipPath = Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) }
             canvas.clipPath(clipPath)
 
             val cx = rect.centerX() + item.panX * pxFactor
@@ -250,6 +287,70 @@ object CollageExporter {
             canvas.drawBitmap(decoded, null, RectF(-dw / 2f, -dh / 2f, dw / 2f, dh / 2f), paint)
             canvas.restore()
             decoded.recycle()
+
+            if (item.vignette > 0.02f) {
+                canvas.save()
+                canvas.clipPath(clipPath)
+                val vRad = maxOf(rect.width(), rect.height()) * 0.72f
+                val vShader = RadialGradient(
+                    rect.centerX(), rect.centerY(), vRad.coerceAtLeast(1f),
+                    intArrayOf(Color.TRANSPARENT, Color.argb((item.vignette.coerceIn(0f, 0.85f) * 210).toInt(), 0, 0, 0)),
+                    floatArrayOf(0.45f, 1f),
+                    Shader.TileMode.CLAMP
+                )
+                canvas.drawRect(rect, Paint().apply { shader = vShader })
+                canvas.restore()
+            }
+        }
+
+        if (strokePaint != null) {
+            canvas.drawPath(clipPath, strokePaint)
+        }
+    }
+
+    private fun drawCanvasTexture(
+        canvas: Canvas,
+        texture: CanvasTexture,
+        width: Int,
+        height: Int,
+        pxFactor: Float
+    ) {
+        when (texture) {
+            CanvasTexture.NONE -> Unit
+            CanvasTexture.FILM_GRAIN -> {
+                val rng = Random(42)
+                val p = Paint().apply { strokeWidth = 1.5f * pxFactor }
+                val count = ((width.toLong() * height.toLong()) / 900L).toInt().coerceIn(800, 5000)
+                for (i in 0 until count) {
+                    val x = rng.nextFloat() * width
+                    val y = rng.nextFloat() * height
+                    p.color = if (i % 2 == 0) Color.argb(26, 255, 255, 255) else Color.argb(28, 0, 0, 0)
+                    canvas.drawPoint(x, y, p)
+                }
+            }
+            CanvasTexture.PAPER -> {
+                canvas.drawColor(Color.argb(22, 245, 232, 205))
+                val linePaint = Paint().apply {
+                    color = Color.argb(14, 255, 255, 255)
+                    strokeWidth = 1f * pxFactor
+                }
+                var y = 0f
+                val step = 12f * pxFactor
+                while (y < height) {
+                    canvas.drawLine(0f, y, width.toFloat(), y, linePaint)
+                    y += step
+                }
+            }
+            CanvasTexture.TORN_EDGE -> {
+                val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.parseColor("#F3F4F6")
+                    style = Paint.Style.STROKE
+                    strokeWidth = 10f * pxFactor
+                    pathEffect = DashPathEffect(floatArrayOf(18f * pxFactor, 8f * pxFactor), 0f)
+                }
+                val inset = 8f * pxFactor
+                canvas.drawRect(inset, inset, width - inset, height - inset, p)
+            }
         }
     }
 
@@ -389,12 +490,14 @@ object CollageExporter {
         cm.postConcat(sat)
         val c = item.contrast
         val b = item.brightness * 255f
+        val rBoost = item.warmth * 35f
+        val bBoost = -item.warmth * 35f
         val translate = (-0.5f * c + 0.5f) * 255f + b
         val contrastMatrix = ColorMatrix(
             floatArrayOf(
-                c, 0f, 0f, 0f, translate,
+                c, 0f, 0f, 0f, translate + rBoost,
                 0f, c, 0f, 0f, translate,
-                0f, 0f, c, 0f, translate,
+                0f, 0f, c, 0f, translate + bBoost,
                 0f, 0f, 0f, 1f, 0f
             )
         )

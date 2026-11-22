@@ -28,12 +28,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -48,6 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.darkmode.scrollgridstudio.data.DraftStorage
 import com.darkmode.scrollgridstudio.export.CollageExporter
 import com.darkmode.scrollgridstudio.export.ExportResult
 import com.darkmode.scrollgridstudio.model.*
@@ -76,6 +80,15 @@ private val TextSwatches = listOf(
     0xFFF97316L
 )
 
+private val BorderSwatches = listOf(
+    null,
+    0xFFF3F4F6L,
+    0xFF0B0D10L,
+    0xFF22C55EL,
+    0xFFFACC15L,
+    0xFF38BDF8L
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StudioScreen() {
@@ -85,12 +98,16 @@ fun StudioScreen() {
     var state by remember { mutableStateOf(StudioState()) }
     var undoStack by remember { mutableStateOf<List<StudioState>>(emptyList()) }
     var redoStack by remember { mutableStateOf<List<StudioState>>(emptyList()) }
+    var activeDraftId by remember { mutableStateOf<String?>(null) }
 
     var textInput by remember { mutableStateOf("") }
+    var hexInput by remember { mutableStateOf("#0B0D10") }
     var showExportSheet by remember { mutableStateOf(false) }
+    var showDraftsSheet by remember { mutableStateOf(false) }
+    var draftsList by remember { mutableStateOf<List<SavedDraftMeta>>(emptyList()) }
     var isExporting by remember { mutableStateOf(false) }
     var lastExportResult by remember { mutableStateOf<ExportResult?>(null) }
-    var statusBanner by remember { mutableStateOf("ScrollGrid Studio • Grid, SCRL Carousel & Freeform") }
+    var statusBanner by remember { mutableStateOf("ScrollGrid Studio • Full Parity Workspace") }
 
     fun pushState(next: StudioState, recordHistory: Boolean = true) {
         if (recordHistory && next != state) {
@@ -147,7 +164,7 @@ fun StudioScreen() {
                     swapSourceIndex = null
                 )
             )
-            statusBanner = "Added ${added.size} item(s) • ${pool.take(cap).size}/$cap on canvas"
+            statusBanner = "Added ${added.size} item(s) • ${pool.take(cap).size}/$cap active"
         }
     }
 
@@ -189,7 +206,7 @@ fun StudioScreen() {
                     selectedOverlayId = newSticker.id
                 )
             )
-            statusBanner = "Added custom PNG/photo sticker"
+            statusBanner = "Added PNG/photo sticker"
         }
     }
 
@@ -208,6 +225,53 @@ fun StudioScreen() {
         )
     }
 
+    fun applyScrlTemplate(template: ScrlTemplate) {
+        val slides = template.slides
+        val pool = state.slots + state.extras
+        val cap = slides * 2
+        val arranged = pool.take(cap).mapIndexed { idx, item ->
+            when (template) {
+                ScrlTemplate.OVERLAP_3 -> item.copy(
+                    freeX = (0.16f + idx * 0.14f).coerceIn(0.1f, 0.9f),
+                    freeY = if (idx % 2 == 0) 0.42f else 0.58f,
+                    freeW = 0.28f,
+                    freeH = 0.56f,
+                    rotationDeg = if (idx % 2 == 0) -2f else 2f,
+                    shadowDp = 12,
+                    zIndex = idx
+                )
+                ScrlTemplate.MAGAZINE_4 -> item.copy(
+                    freeX = (0.12f + idx * 0.11f).coerceIn(0.08f, 0.92f),
+                    freeY = if (idx % 2 == 0) 0.36f else 0.64f,
+                    freeW = 0.22f,
+                    freeH = 0.48f,
+                    rotationDeg = 0f,
+                    shadowDp = 10,
+                    zIndex = idx
+                )
+                ScrlTemplate.PANORAMA_5 -> item.copy(
+                    freeX = (0.10f + idx * 0.09f).coerceIn(0.06f, 0.94f),
+                    freeY = 0.5f,
+                    freeW = 0.18f,
+                    freeH = 0.72f,
+                    rotationDeg = 0f,
+                    shadowDp = 8,
+                    zIndex = idx
+                )
+            }
+        }
+        pushState(
+            state.copy(
+                mode = StudioMode.CAROUSEL,
+                carouselSlides = slides,
+                slots = arranged,
+                extras = pool.drop(cap),
+                selectedSlotIndex = 0
+            )
+        )
+        statusBanner = "Applied ${template.label} SCRL carousel template"
+    }
+
     fun updateSelectedMedia(recordHistory: Boolean = true, transform: (MediaItem) -> MediaItem) {
         if (state.slots.isEmpty()) return
         val idx = state.selectedSlotIndex.coerceIn(0, state.slots.lastIndex)
@@ -215,6 +279,18 @@ fun StudioScreen() {
             this[idx] = transform(this[idx])
         }
         pushState(state.copy(slots = updated), recordHistory = recordHistory)
+    }
+
+    fun duplicateSelectedMedia() {
+        val sel = state.slots.getOrNull(state.selectedSlotIndex) ?: return
+        val copy = sel.copy(
+            id = UUID.randomUUID().toString(),
+            freeX = (sel.freeX + 0.05f).coerceAtMost(0.92f),
+            freeY = (sel.freeY + 0.05f).coerceAtMost(0.92f),
+            zIndex = (state.slots.maxOfOrNull { it.zIndex } ?: 0) + 1
+        )
+        pushState(state.copy(slots = state.slots + copy, selectedSlotIndex = state.slots.size))
+        statusBanner = "Duplicated layer"
     }
 
     fun deleteSelectedMedia() {
@@ -258,16 +334,26 @@ fun StudioScreen() {
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        // 1. Top Studio Bar: Modes + Undo/Redo + Lock + Export
+        // 1. Top Studio Bar: Drafts + Modes + Undo/Redo + Lock + Export
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp)
                 .background(BgPanel)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            IconButton(
+                onClick = {
+                    draftsList = DraftStorage.listDrafts(context)
+                    showDraftsSheet = true
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.Default.FolderOpen, "Drafts", tint = CyanGuide, modifier = Modifier.size(18.dp))
+            }
+
             Row(
                 modifier = Modifier
                     .weight(1f)
@@ -288,17 +374,17 @@ fun StudioScreen() {
                             color = if (selected) TextPrimary else TextSecondary,
                             fontSize = 11.sp,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                         )
                     }
                 }
             }
 
-            IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Undo, "Undo", tint = if (undoStack.isNotEmpty()) TextPrimary else Color(0xFF4B5563), modifier = Modifier.size(18.dp))
+            IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Default.Undo, "Undo", tint = if (undoStack.isNotEmpty()) TextPrimary else Color(0xFF4B5563), modifier = Modifier.size(17.dp))
             }
-            IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Redo, "Redo", tint = if (redoStack.isNotEmpty()) TextPrimary else Color(0xFF4B5563), modifier = Modifier.size(18.dp))
+            IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Default.Redo, "Redo", tint = if (redoStack.isNotEmpty()) TextPrimary else Color(0xFF4B5563), modifier = Modifier.size(17.dp))
             }
 
             Surface(
@@ -315,7 +401,7 @@ fun StudioScreen() {
                     imageVector = if (state.canvasLocked) Icons.Default.Lock else Icons.Default.LockOpen,
                     contentDescription = "Lock Canvas",
                     tint = if (state.canvasLocked) AccentGreen else TextSecondary,
-                    modifier = Modifier.padding(6.dp).size(17.dp)
+                    modifier = Modifier.padding(6.dp).size(16.dp)
                 )
             }
 
@@ -323,18 +409,16 @@ fun StudioScreen() {
                 onClick = { showExportSheet = true },
                 colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color(0xFF05130A)),
                 shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                modifier = Modifier.height(34.dp)
+                contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                modifier = Modifier.height(32.dp)
             ) {
-                Icon(Icons.Default.FileUpload, null, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(3.dp))
                 Text("Export", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
 
         HorizontalDivider(thickness = 1.dp, color = BorderSubtle)
 
-        // Status & Quick Clear Strip
+        // Status, Save Draft, & Reset Strip
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -351,23 +435,34 @@ fun StudioScreen() {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            if (state.slots.isNotEmpty() || state.overlays.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "Reset",
-                    color = DangerRed,
+                    text = "Save Draft",
+                    color = AccentGreen,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .padding(start = 8.dp)
-                        .clickable {
+                    modifier = Modifier.clickable {
+                        activeDraftId = DraftStorage.saveDraft(context, state, activeDraftId)
+                        statusBanner = "Draft saved locally"
+                    }
+                )
+                if (state.slots.isNotEmpty() || state.overlays.isNotEmpty()) {
+                    Text(
+                        text = "Reset",
+                        color = DangerRed,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable {
+                            activeDraftId = null
                             pushState(StudioState(mode = state.mode, layout = state.layout, carouselSlides = state.carouselSlides))
                             statusBanner = "Canvas cleared"
                         }
-                )
+                    )
+                }
             }
         }
 
-        // 2. Interactive Canvas Viewport (Scrollable horizontally in Carousel mode!)
+        // 2. Interactive Canvas Viewport
         BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
@@ -376,8 +471,8 @@ fun StudioScreen() {
             contentAlignment = Alignment.Center
         ) {
             val density = LocalDensity.current
-            val ratioW = state.exportConfig.aspectRatio.widthRatio.toFloat()
-            val ratioH = state.exportConfig.aspectRatio.heightRatio.toFloat()
+            val ratioW = state.exportConfig.outputWidthPx().toFloat()
+            val ratioH = state.exportConfig.outputHeightPx().toFloat()
             val slideAspect = (ratioW / ratioH).coerceIn(0.45f, 2.0f)
 
             val slideHeightDp = (maxHeight - 8.dp).coerceAtLeast(180.dp)
@@ -396,10 +491,10 @@ fun StudioScreen() {
                 contentAlignment = if (state.mode == StudioMode.CAROUSEL) Alignment.CenterStart else Alignment.Center
             ) {
                 val bg = state.backgroundStyle
-                val bgModifier = if (bg.startHex != bg.endHex && !bg.isBlurPhoto) {
-                    Modifier.background(Brush.linearGradient(listOf(Color(bg.startHex), Color(bg.endHex))))
-                } else {
-                    Modifier.background(Color(bg.startHex))
+                val bgModifier = when {
+                    state.customBgHex != null -> Modifier.background(Color(state.customBgHex!!))
+                    bg.startHex != bg.endHex && !bg.isBlurPhoto -> Modifier.background(Brush.linearGradient(listOf(Color(bg.startHex), Color(bg.endHex))))
+                    else -> Modifier.background(Color(bg.startHex))
                 }
 
                 Box(
@@ -410,15 +505,12 @@ fun StudioScreen() {
                         .then(bgModifier)
                         .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
                 ) {
-                    // Blurred Photo Background Layer
-                    if (bg.isBlurPhoto && state.slots.isNotEmpty()) {
+                    if (state.customBgHex == null && bg.isBlurPhoto && state.slots.isNotEmpty()) {
                         AsyncImage(
                             model = state.slots.first().uri,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .blur(18.dp)
+                            modifier = Modifier.fillMaxSize().blur(18.dp)
                         )
                         Box(Modifier.fillMaxSize().background(Color(0x660B0D10)))
                     }
@@ -436,14 +528,11 @@ fun StudioScreen() {
                             Icon(Icons.Default.AddPhotoAlternate, null, tint = AccentGreen, modifier = Modifier.size(36.dp))
                             Spacer(Modifier.height(6.dp))
                             Text("Tap to Add Photos or Videos", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Real Grids • Scrollable SCRL Carousel • Freeform Layers", color = TextSecondary, fontSize = 11.sp)
+                            Text("15 Shape/Grid Layouts • SCRL Carousels • Print Sizes", color = TextSecondary, fontSize = 11.sp)
                         }
                     } else if (state.mode == StudioMode.GRID) {
-                        // Real Multi-Template Grid Renderer
                         BoxWithConstraints(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(state.outerMarginDp.dp)
+                            modifier = Modifier.fillMaxSize().padding(state.outerMarginDp.dp)
                         ) {
                             val cw = maxWidth
                             val ch = maxHeight
@@ -459,22 +548,23 @@ fun StudioScreen() {
                                 if (item != null) {
                                     val isSelected = idx == state.selectedSlotIndex
                                     val isSwapSrc = idx == state.swapSourceIndex
+                                    val mask = if (item.maskShape != TileMaskShape.RECTANGLE) item.maskShape else slotRect.maskShape
+                                    val tileShape = ShapePaths.composeShape(mask, state.cornerRadiusDp.dp)
                                     val borderColor = when {
                                         isSwapSrc -> CyanGuide
                                         isSelected -> AccentGreen
+                                        state.borderColorHex != null -> Color(state.borderColorHex!!)
                                         else -> Color.Transparent
                                     }
+                                    val borderW = if (isSelected || isSwapSrc || state.borderColorHex != null) 2.dp else 0.dp
+
                                     Box(
                                         modifier = Modifier
                                             .offset(x = offX, y = offY)
                                             .size(width = cellW, height = cellH)
-                                            .clip(RoundedCornerShape(state.cornerRadiusDp.dp))
+                                            .clip(tileShape)
                                             .background(if (slotRect.polaroidBottomPad > 0f) Color(0xFFF3F4F6) else Color(0xFF1C232E))
-                                            .border(
-                                                width = if (isSelected || isSwapSrc) 2.dp else 0.dp,
-                                                color = borderColor,
-                                                shape = RoundedCornerShape(state.cornerRadiusDp.dp)
-                                            )
+                                            .border(borderW, borderColor, tileShape)
                                             .clickable { handleTileTap(idx) }
                                             .pointerInput(item.id, state.canvasLocked) {
                                                 if (!state.canvasLocked) {
@@ -502,7 +592,7 @@ fun StudioScreen() {
                             }
                         }
                     } else {
-                        // True Freeform & SCRL Overlapping Layer Canvas (crosses slide seams!)
+                        // True Freeform & SCRL Overlapping Layer Canvas with Drop Shadows & Shape Masks
                         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                             val totalWpx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
                             val totalHpx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
@@ -514,6 +604,12 @@ fun StudioScreen() {
                                 val itemH = maxHeight * item.freeH
                                 val leftDp = maxWidth * item.freeX - itemW / 2
                                 val topDp = maxHeight * item.freeY - itemH / 2
+                                val tileShape = ShapePaths.composeShape(item.maskShape, state.cornerRadiusDp.dp)
+                                val borderColor = when {
+                                    isSelected -> AccentGreen
+                                    state.borderColorHex != null -> Color(state.borderColorHex!!)
+                                    else -> Color.Transparent
+                                }
 
                                 Box(
                                     modifier = Modifier
@@ -523,13 +619,10 @@ fun StudioScreen() {
                                             rotationZ = item.rotationDeg
                                             alpha = item.opacity
                                         }
-                                        .clip(RoundedCornerShape(state.cornerRadiusDp.dp))
+                                        .then(if (item.shadowDp > 0) Modifier.shadow(item.shadowDp.dp, tileShape) else Modifier)
+                                        .clip(tileShape)
                                         .background(Color(0xFF1C232E))
-                                        .border(
-                                            width = if (isSelected) 2.dp else 0.dp,
-                                            color = if (isSelected) AccentGreen else Color.Transparent,
-                                            shape = RoundedCornerShape(state.cornerRadiusDp.dp)
-                                        )
+                                        .border(if (isSelected || state.borderColorHex != null) 2.dp else 0.dp, borderColor, tileShape)
                                         .clickable { state = state.copy(selectedSlotIndex = origIdx) }
                                         .pointerInput(item.id, state.canvasLocked, item.locked) {
                                             if (!state.canvasLocked && !item.locked) {
@@ -554,17 +647,30 @@ fun StudioScreen() {
                                 ) {
                                     MediaTileImage(item = item, modifier = Modifier.fillMaxSize())
                                     if (item.locked) {
-                                        Icon(
-                                            Icons.Default.Lock,
-                                            null,
-                                            tint = AccentGreen,
-                                            modifier = Modifier
-                                                .align(Alignment.TopStart)
-                                                .padding(4.dp)
-                                                .size(14.dp)
-                                        )
+                                        Icon(Icons.Default.Lock, null, tint = AccentGreen, modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(14.dp))
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    // Canvas Texture Preview Overlay
+                    if (state.canvasTexture != CanvasTexture.NONE) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            when (state.canvasTexture) {
+                                CanvasTexture.FILM_GRAIN -> {
+                                    drawRect(Color(0x14FFFFFF))
+                                }
+                                CanvasTexture.PAPER -> {
+                                    drawRect(Color(0x18F5E8CD))
+                                }
+                                CanvasTexture.TORN_EDGE -> {
+                                    drawRect(
+                                        color = Color(0xCCF3F4F6),
+                                        style = Stroke(width = 6f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 6f), 0f))
+                                    )
+                                }
+                                CanvasTexture.NONE -> Unit
                             }
                         }
                     }
@@ -588,13 +694,7 @@ fun StudioScreen() {
                                 for (s in 1..state.carouselSlides) {
                                     Box(modifier = Modifier.weight(1f).padding(6.dp)) {
                                         Surface(color = Color(0xCC0B0D10), shape = RoundedCornerShape(6.dp)) {
-                                            Text(
-                                                "SLIDE $s",
-                                                color = CyanGuide,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
+                                            Text("SLIDE $s", color = CyanGuide, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                                         }
                                     }
                                 }
@@ -689,9 +789,7 @@ fun StudioScreen() {
                 color = BgPanel.copy(alpha = 0.94f),
                 shape = RoundedCornerShape(20.dp),
                 border = BorderStroke(1.dp, BorderSubtle),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp)
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -741,13 +839,10 @@ fun StudioScreen() {
             }
         }
 
-        // Visible Extras Tray (when overflow photos are queued)
+        // Visible Extras Tray
         if (state.extras.isNotEmpty()) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(BgCanvas)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().background(BgCanvas).padding(horizontal = 10.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -793,6 +888,17 @@ fun StudioScreen() {
             when (state.activeTab) {
                 StudioTab.LAYOUT -> {
                     if (state.mode == StudioMode.CAROUSEL) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            ScrlTemplate.entries.forEach { tpl ->
+                                SuggestionChip(
+                                    onClick = { applyScrlTemplate(tpl) },
+                                    label = { Text(tpl.label, fontSize = 11.sp) }
+                                )
+                            }
+                        }
                         StepperRow(
                             label = "Carousel Slides",
                             valueText = "${state.carouselSlides} slides",
@@ -800,12 +906,13 @@ fun StudioScreen() {
                             onPlus = { applyLayoutCapacity(state.mode, state.layout, state.carouselSlides + 1) }
                         )
                     } else {
+                        // Visual Thumbnail Wireframe Previews for all 15 layouts
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(LayoutStyle.entries) { layout ->
-                                FilterChip(
+                                LayoutThumbnailChip(
+                                    layout = layout,
                                     selected = state.layout == layout,
-                                    onClick = { applyLayoutCapacity(state.mode, layout, state.carouselSlides) },
-                                    label = { Text(layout.label, fontSize = 11.sp) }
+                                    onClick = { applyLayoutCapacity(state.mode, layout, state.carouselSlides) }
                                 )
                             }
                         }
@@ -815,7 +922,7 @@ fun StudioScreen() {
                             FilterChip(
                                 selected = state.exportConfig.aspectRatio == ratio,
                                 onClick = { pushState(state.copy(exportConfig = state.exportConfig.copy(aspectRatio = ratio))) },
-                                label = { Text(ratio.label, fontSize = 11.sp) }
+                                label = { Text(ratio.label, fontSize = 10.sp) }
                             )
                         }
                     }
@@ -842,26 +949,18 @@ fun StudioScreen() {
                 StudioTab.MEDIA -> {
                     val sel = state.slots.getOrNull(state.selectedSlotIndex)
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         FilledTonalButton(
                             onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.Add, null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(3.dp))
-                            Text("Add", fontSize = 11.sp)
-                        }
+                        ) { Text("Add", fontSize = 11.sp) }
                         OutlinedButton(
                             onClick = { replacePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
                             enabled = sel != null,
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text("Replace", fontSize = 11.sp)
-                        }
+                        ) { Text("Replace", fontSize = 11.sp) }
                         OutlinedButton(
                             onClick = {
                                 if (sel != null) {
@@ -870,79 +969,91 @@ fun StudioScreen() {
                             },
                             enabled = state.slots.size > 1,
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.SwapHoriz, null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(3.dp))
-                            Text("Swap", fontSize = 11.sp)
-                        }
+                        ) { Text("Swap", fontSize = 11.sp) }
                         OutlinedButton(
                             onClick = { updateSelectedMedia { it.copy(fitInside = !it.fitInside) } },
                             enabled = sel != null,
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text(if (sel?.fitInside == true) "Fill" else "Fit", fontSize = 11.sp)
-                        }
+                        ) { Text(if (sel?.fitInside == true) "Fill" else "Fit", fontSize = 11.sp) }
                         OutlinedButton(
                             onClick = { updateSelectedMedia { it.copy(flipHorizontal = !it.flipHorizontal) } },
                             enabled = sel != null,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.Flip, null, modifier = Modifier.size(15.dp))
-                        }
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) { Icon(Icons.Default.Flip, null, modifier = Modifier.size(15.dp)) }
                         OutlinedButton(
                             onClick = { updateSelectedMedia { it.copy(rotationDeg = (it.rotationDeg + 90f) % 360f) } },
                             enabled = sel != null,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text("90°", fontSize = 11.sp)
-                        }
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) { Text("90°", fontSize = 11.sp) }
                         if (state.mode != StudioMode.GRID && sel != null) {
+                            OutlinedButton(
+                                onClick = { duplicateSelectedMedia() },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) { Icon(Icons.Default.ContentCopy, "Duplicate", modifier = Modifier.size(15.dp)) }
                             OutlinedButton(
                                 onClick = {
                                     val maxZ = (state.slots.maxOfOrNull { it.zIndex } ?: 0) + 1
                                     updateSelectedMedia { it.copy(zIndex = maxZ) }
                                 },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Icon(Icons.Default.FlipToFront, "Front", modifier = Modifier.size(15.dp))
-                            }
+                            ) { Icon(Icons.Default.FlipToFront, "Front", modifier = Modifier.size(15.dp)) }
                             OutlinedButton(
                                 onClick = {
                                     val minZ = (state.slots.minOfOrNull { it.zIndex } ?: 0) - 1
                                     updateSelectedMedia { it.copy(zIndex = minZ) }
                                 },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Icon(Icons.Default.FlipToBack, "Back", modifier = Modifier.size(15.dp))
-                            }
+                            ) { Icon(Icons.Default.FlipToBack, "Back", modifier = Modifier.size(15.dp)) }
                             OutlinedButton(
                                 onClick = { updateSelectedMedia { it.copy(locked = !it.locked) } },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Icon(if (sel.locked) Icons.Default.Lock else Icons.Default.LockOpen, "Lock Layer", modifier = Modifier.size(15.dp))
-                            }
+                            ) { Icon(if (sel.locked) Icons.Default.Lock else Icons.Default.LockOpen, "Lock", modifier = Modifier.size(15.dp)) }
                         }
                         OutlinedButton(
                             onClick = { deleteSelectedMedia() },
                             enabled = sel != null,
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.Delete, "Delete", modifier = Modifier.size(15.dp))
+                        ) { Icon(Icons.Default.Delete, "Delete", modifier = Modifier.size(15.dp)) }
+                    }
+
+                    // Tile Shape Mask Picker
+                    if (sel != null) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(TileMaskShape.entries) { mask ->
+                                FilterChip(
+                                    selected = sel.maskShape == mask,
+                                    onClick = { updateSelectedMedia { it.copy(maskShape = mask) } },
+                                    label = { Text(mask.label, fontSize = 10.sp) }
+                                )
+                            }
                         }
                     }
+
                     StepperRow(
-                        label = "Tile Zoom",
-                        valueText = "${((sel?.scale ?: 1f) * 100).roundToInt()}%",
-                        onMinus = { updateSelectedMedia { it.copy(scale = (it.scale - 0.1f).coerceAtLeast(0.5f)) } },
-                        onPlus = { updateSelectedMedia { it.copy(scale = (it.scale + 0.1f).coerceAtMost(4f)) } }
+                        label = if (state.mode == StudioMode.GRID) "Tile Zoom" else "Drop Shadow",
+                        valueText = if (state.mode == StudioMode.GRID) "${((sel?.scale ?: 1f) * 100).roundToInt()}%" else "${sel?.shadowDp ?: 0} dp",
+                        onMinus = {
+                            if (state.mode == StudioMode.GRID) {
+                                updateSelectedMedia { it.copy(scale = (it.scale - 0.1f).coerceAtLeast(0.5f)) }
+                            } else {
+                                updateSelectedMedia { it.copy(shadowDp = (it.shadowDp - 2).coerceAtLeast(0)) }
+                            }
+                        },
+                        onPlus = {
+                            if (state.mode == StudioMode.GRID) {
+                                updateSelectedMedia { it.copy(scale = (it.scale + 0.1f).coerceAtMost(4f)) }
+                            } else {
+                                updateSelectedMedia { it.copy(shadowDp = (it.shadowDp + 2).coerceAtMost(24)) }
+                            }
+                        }
                     )
                 }
 
                 StudioTab.BG -> {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(BackgroundStyle.entries) { bg ->
-                            val selected = state.backgroundStyle == bg
+                            val selected = state.customBgHex == null && state.backgroundStyle == bg
                             val mod = if (bg.startHex != bg.endHex && !bg.isBlurPhoto) {
                                 Modifier.background(Brush.linearGradient(listOf(Color(bg.startHex), Color(bg.endHex))))
                             } else {
@@ -953,16 +1064,66 @@ fun StudioScreen() {
                                     .clip(RoundedCornerShape(10.dp))
                                     .then(mod)
                                     .border(if (selected) 2.dp else 1.dp, if (selected) AccentGreen else BorderSubtle, RoundedCornerShape(10.dp))
-                                    .clickable { pushState(state.copy(backgroundStyle = bg)) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .clickable { pushState(state.copy(backgroundStyle = bg, customBgHex = null)) }
+                                    .padding(horizontal = 10.dp, vertical = 7.dp)
                             ) {
-                                Text(
-                                    text = bg.label,
-                                    color = if (bg == BackgroundStyle.PURE_WHITE) Color(0xFF0B0D10) else TextPrimary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Text(bg.label, color = if (bg == BackgroundStyle.PURE_WHITE) Color(0xFF0B0D10) else TextPrimary, fontSize = 11.sp)
                             }
+                        }
+                    }
+
+                    // Custom HEX Color + Texture + Border Color
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = hexInput,
+                            onValueChange = { hexInput = it },
+                            placeholder = { Text("#133326", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                val parsed = parseHexColor(hexInput)
+                                if (parsed != null) {
+                                    pushState(state.copy(customBgHex = parsed))
+                                    statusBanner = "Applied custom BG $hexInput"
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color(0xFF05130A))
+                        ) { Text("HEX", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CanvasTexture.entries.forEach { tex ->
+                            FilterChip(
+                                selected = state.canvasTexture == tex,
+                                onClick = { pushState(state.copy(canvasTexture = tex)) },
+                                label = { Text(tex.label, fontSize = 10.sp) }
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text("Border:", color = TextSecondary, fontSize = 10.sp)
+                        BorderSwatches.forEach { hex ->
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(if (hex != null) Color(hex) else BgCanvas)
+                                    .border(
+                                        width = if (state.borderColorHex == hex) 2.dp else 1.dp,
+                                        color = if (state.borderColorHex == hex) AccentGreen else BorderSubtle,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { pushState(state.copy(borderColorHex = hex)) }
+                            )
                         }
                     }
                 }
@@ -996,13 +1157,10 @@ fun StudioScreen() {
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color(0xFF05130A))
-                        ) {
-                            Text(if (selOverlay != null) "Update" else "Add", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
+                        ) { Text(if (selOverlay != null) "Update" else "Add", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     }
 
                     if (selOverlay != null) {
-                        // Font, Pill, Outline, Align, Delete controls
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1028,17 +1186,6 @@ fun StudioScreen() {
                                 },
                                 label = { Text("Pill", fontSize = 10.sp) }
                             )
-                            TextAlignOption.entries.forEach { al ->
-                                FilterChip(
-                                    selected = selOverlay.alignment == al,
-                                    onClick = {
-                                        pushState(state.copy(overlays = state.overlays.map {
-                                            if (it.id == selOverlay.id) it.copy(alignment = al) else it
-                                        }))
-                                    },
-                                    label = { Text(al.label, fontSize = 10.sp) }
-                                )
-                            }
                             IconButton(
                                 onClick = {
                                     pushState(state.copy(
@@ -1048,12 +1195,9 @@ fun StudioScreen() {
                                     textInput = ""
                                 },
                                 modifier = Modifier.size(30.dp)
-                            ) {
-                                Icon(Icons.Default.Delete, "Delete Text", tint = DangerRed, modifier = Modifier.size(18.dp))
-                            }
+                            ) { Icon(Icons.Default.Delete, "Delete Text", tint = DangerRed, modifier = Modifier.size(18.dp)) }
                         }
 
-                        // Color Swatches
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             TextSwatches.forEach { hex ->
                                 Box(
@@ -1061,11 +1205,7 @@ fun StudioScreen() {
                                         .size(22.dp)
                                         .clip(CircleShape)
                                         .background(Color(hex))
-                                        .border(
-                                            width = if (selOverlay.textColorHex == hex) 2.dp else 1.dp,
-                                            color = if (selOverlay.textColorHex == hex) AccentGreen else BorderSubtle,
-                                            shape = CircleShape
-                                        )
+                                        .border(if (selOverlay.textColorHex == hex) 2.dp else 1.dp, if (selOverlay.textColorHex == hex) AccentGreen else BorderSubtle, CircleShape)
                                         .clickable {
                                             pushState(state.copy(overlays = state.overlays.map {
                                                 if (it.id == selOverlay.id) it.copy(textColorHex = hex) else it
@@ -1130,7 +1270,7 @@ fun StudioScreen() {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Selected Sticker Opacity: ${(selSticker.opacity * 100).roundToInt()}%", color = TextSecondary, fontSize = 11.sp)
+                            Text("Opacity: ${(selSticker.opacity * 100).roundToInt()}%", color = TextSecondary, fontSize = 11.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 OutlinedButton(
                                     onClick = {
@@ -1150,15 +1290,10 @@ fun StudioScreen() {
                                 ) { Text("+", fontSize = 12.sp) }
                                 IconButton(
                                     onClick = {
-                                        pushState(state.copy(
-                                            overlays = state.overlays.filterNot { it.id == selSticker.id },
-                                            selectedOverlayId = null
-                                        ))
+                                        pushState(state.copy(overlays = state.overlays.filterNot { it.id == selSticker.id }, selectedOverlayId = null))
                                     },
                                     modifier = Modifier.size(30.dp)
-                                ) {
-                                    Icon(Icons.Default.Delete, "Delete Sticker", tint = DangerRed, modifier = Modifier.size(18.dp))
-                                }
+                                ) { Icon(Icons.Default.Delete, "Delete Sticker", tint = DangerRed, modifier = Modifier.size(18.dp)) }
                             }
                         }
                     }
@@ -1179,7 +1314,9 @@ fun StudioScreen() {
                                         it.copy(
                                             brightness = preset.brightness,
                                             contrast = preset.contrast,
-                                            saturation = preset.saturation
+                                            saturation = preset.saturation,
+                                            warmth = preset.warmth,
+                                            vignette = preset.vignette
                                         )
                                     }
                                 },
@@ -1193,15 +1330,15 @@ fun StudioScreen() {
                                         it.copy(
                                             brightness = sel.brightness,
                                             contrast = sel.contrast,
-                                            saturation = sel.saturation
+                                            saturation = sel.saturation,
+                                            warmth = sel.warmth,
+                                            vignette = sel.vignette
                                         )
                                     }))
                                     statusBanner = "Applied filter to all ${state.slots.size} photos"
                                 },
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text("Apply All", fontSize = 11.sp)
-                            }
+                            ) { Text("Apply All", fontSize = 11.sp) }
                         }
                     }
                     StepperRow(
@@ -1217,10 +1354,16 @@ fun StudioScreen() {
                         onPlus = { updateSelectedMedia { it.copy(contrast = (it.contrast + 0.1f).coerceAtMost(2.0f)) } }
                     )
                     StepperRow(
-                        label = "Saturation",
-                        valueText = "${((sel?.saturation ?: 1f) * 100).roundToInt()}%",
-                        onMinus = { updateSelectedMedia { it.copy(saturation = (it.saturation - 0.1f).coerceAtLeast(0f)) } },
-                        onPlus = { updateSelectedMedia { it.copy(saturation = (it.saturation + 0.1f).coerceAtMost(2.0f)) } }
+                        label = "Warmth",
+                        valueText = "${((sel?.warmth ?: 0f) * 100).roundToInt()}",
+                        onMinus = { updateSelectedMedia { it.copy(warmth = (it.warmth - 0.1f).coerceAtLeast(-0.8f)) } },
+                        onPlus = { updateSelectedMedia { it.copy(warmth = (it.warmth + 0.1f).coerceAtMost(0.8f)) } }
+                    )
+                    StepperRow(
+                        label = "Vignette",
+                        valueText = "${((sel?.vignette ?: 0f) * 100).roundToInt()}%",
+                        onMinus = { updateSelectedMedia { it.copy(vignette = (it.vignette - 0.1f).coerceAtLeast(0f)) } },
+                        onPlus = { updateSelectedMedia { it.copy(vignette = (it.vignette + 0.1f).coerceAtMost(0.8f)) } }
                     )
                 }
             }
@@ -1228,13 +1371,9 @@ fun StudioScreen() {
 
         HorizontalDivider(thickness = 1.dp, color = BorderSubtle)
 
-        // 4. Bottom Tool Dock (6 Fixed Tabs)
+        // 4. Bottom Tool Dock
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .background(BgPanel)
-                .padding(horizontal = 4.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp).background(BgPanel).padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1264,7 +1403,94 @@ fun StudioScreen() {
         }
     }
 
-    // 5. Async Photo Export Bottom Sheet
+    // 5. Saved Drafts ("My Collages") Bottom Sheet
+    if (showDraftsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showDraftsSheet = false },
+            containerColor = BgPanel,
+            contentColor = TextPrimary
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("My Collages (Saved Drafts)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Button(
+                        onClick = {
+                            activeDraftId = DraftStorage.saveDraft(context, state, activeDraftId)
+                            draftsList = DraftStorage.listDrafts(context)
+                            statusBanner = "Saved current collage"
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color(0xFF05130A)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) { Text("Save Current", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                }
+
+                OutlinedTextField(
+                    value = state.projectName,
+                    onValueChange = { state = state.copy(projectName = it) },
+                    label = { Text("Project Name", fontSize = 11.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (draftsList.isEmpty()) {
+                    Text("No saved drafts yet. Tap 'Save Current' to store your work.", color = TextSecondary, fontSize = 12.sp)
+                } else {
+                    draftsList.forEach { draft ->
+                        Surface(
+                            color = BgCanvas,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, if (draft.id == activeDraftId) AccentGreen else BorderSubtle),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val loaded = DraftStorage.loadDraft(context, draft.id)
+                                        if (loaded != null) {
+                                            activeDraftId = draft.id
+                                            pushState(loaded)
+                                            showDraftsSheet = false
+                                            statusBanner = "Opened '${loaded.projectName}'"
+                                        }
+                                    }
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(draft.name, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("${draft.modeTitle} • ${draft.itemCount} media items", color = TextSecondary, fontSize = 11.sp)
+                                }
+                                IconButton(
+                                    onClick = {
+                                        DraftStorage.deleteDraft(context, draft.id)
+                                        if (activeDraftId == draft.id) activeDraftId = null
+                                        draftsList = DraftStorage.listDrafts(context)
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Delete, "Delete Draft", tint = DangerRed, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+        }
+    }
+
+    // 6. Async Photo Export Bottom Sheet
     if (showExportSheet) {
         ModalBottomSheet(
             onDismissRequest = { if (!isExporting) showExportSheet = false },
@@ -1320,6 +1546,38 @@ fun StudioScreen() {
 }
 
 @Composable
+private fun LayoutThumbnailChip(
+    layout: LayoutStyle,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = if (selected) Color(0xFF1A2E22) else BgCanvas,
+        border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Canvas(modifier = Modifier.size(28.dp)) {
+                layout.slotRects().forEach { r ->
+                    drawRect(
+                        color = if (selected) AccentGreen else TextSecondary,
+                        topLeft = Offset(r.left * size.width + 1f, r.top * size.height + 1f),
+                        size = Size((r.width * size.width - 2f).coerceAtLeast(2f), (r.height * size.height - 2f).coerceAtLeast(2f)),
+                        style = Stroke(width = 1.4f)
+                    )
+                }
+            }
+            Text(layout.label, color = if (selected) TextPrimary else TextSecondary, fontSize = 9.sp)
+        }
+    }
+}
+
+@Composable
 private fun MediaTileImage(item: MediaItem, modifier: Modifier) {
     Box(modifier = modifier) {
         AsyncImage(
@@ -1337,13 +1595,22 @@ private fun MediaTileImage(item: MediaItem, modifier: Modifier) {
                     rotationZ = item.rotationDeg
                 }
         )
+        if (item.vignette > 0.02f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = (item.vignette * 0.75f).coerceIn(0f, 0.75f)))
+                        )
+                    )
+            )
+        }
         if (item.isVideo) {
             Surface(
                 color = Color(0xCC0B0D10),
                 shape = RoundedCornerShape(6.dp),
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(5.dp)
+                modifier = Modifier.align(Alignment.TopEnd).padding(5.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
@@ -1419,24 +1686,14 @@ private fun ExportOptionsSheetContent(
                 shape = RoundedCornerShape(8.dp),
                 border = BorderStroke(1.dp, AccentGreen)
             ) {
-                Text(
-                    text = "${w} × ${h} px • sRGB",
-                    color = AccentGreen,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
+                Text("${w} × ${h} px • sRGB", color = AccentGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             }
         }
 
         Text("Export Mode", color = TextSecondary, fontSize = 12.sp)
         Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ExportMode.entries.forEach { mode ->
-                FilterChip(
-                    selected = cfg.mode == mode,
-                    onClick = { onConfigChange(cfg.copy(mode = mode)) },
-                    label = { Text(mode.label, fontSize = 11.sp) }
-                )
+                FilterChip(selected = cfg.mode == mode, onClick = { onConfigChange(cfg.copy(mode = mode)) }, label = { Text(mode.label, fontSize = 11.sp) })
             }
         }
 
@@ -1444,11 +1701,7 @@ private fun ExportOptionsSheetContent(
             Text("Slide Save Order", color = TextSecondary, fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 SlideOrder.entries.forEach { order ->
-                    FilterChip(
-                        selected = cfg.slideOrder == order,
-                        onClick = { onConfigChange(cfg.copy(slideOrder = order)) },
-                        label = { Text(order.label, fontSize = 11.sp) }
-                    )
+                    FilterChip(selected = cfg.slideOrder == order, onClick = { onConfigChange(cfg.copy(slideOrder = order)) }, label = { Text(order.label, fontSize = 11.sp) })
                 }
             }
         }
@@ -1462,36 +1715,39 @@ private fun ExportOptionsSheetContent(
             )
         }
 
-        Text("Resolution", color = TextSecondary, fontSize = 12.sp)
+        Text("Aspect Ratio & Print Sizes", color = TextSecondary, fontSize = 12.sp)
         Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ResolutionPreset.entries.forEach { res ->
-                FilterChip(
-                    selected = cfg.resolution == res,
-                    onClick = { onConfigChange(cfg.copy(resolution = res)) },
-                    label = { Text(res.label, fontSize = 11.sp) }
-                )
+            AspectRatioOption.entries.forEach { ratio ->
+                FilterChip(selected = cfg.aspectRatio == ratio, onClick = { onConfigChange(cfg.copy(aspectRatio = ratio)) }, label = { Text(ratio.label, fontSize = 11.sp) })
             }
         }
 
-        Text("Aspect Ratio", color = TextSecondary, fontSize = 12.sp)
-        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            AspectRatioOption.entries.forEach { ratio ->
-                FilterChip(
-                    selected = cfg.aspectRatio == ratio,
-                    onClick = { onConfigChange(cfg.copy(aspectRatio = ratio)) },
-                    label = { Text(ratio.label, fontSize = 11.sp) }
-                )
+        if (cfg.aspectRatio == AspectRatioOption.CUSTOM) {
+            StepperRow(
+                label = "Custom Width",
+                valueText = "${cfg.customWidthPx} px",
+                onMinus = { onConfigChange(cfg.copy(customWidthPx = (cfg.customWidthPx - 120).coerceAtLeast(360))) },
+                onPlus = { onConfigChange(cfg.copy(customWidthPx = (cfg.customWidthPx + 120).coerceAtMost(4320))) }
+            )
+            StepperRow(
+                label = "Custom Height",
+                valueText = "${cfg.customHeightPx} px",
+                onMinus = { onConfigChange(cfg.copy(customHeightPx = (cfg.customHeightPx - 120).coerceAtLeast(360))) },
+                onPlus = { onConfigChange(cfg.copy(customHeightPx = (cfg.customHeightPx + 120).coerceAtMost(4320))) }
+            )
+        } else if (cfg.aspectRatio.printWidthPx == null) {
+            Text("Resolution", color = TextSecondary, fontSize = 12.sp)
+            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ResolutionPreset.entries.forEach { res ->
+                    FilterChip(selected = cfg.resolution == res, onClick = { onConfigChange(cfg.copy(resolution = res)) }, label = { Text(res.label, fontSize = 11.sp) })
+                }
             }
         }
 
         Text("File Format", color = TextSecondary, fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ExportFormat.entries.forEach { fmt ->
-                FilterChip(
-                    selected = cfg.format == fmt,
-                    onClick = { onConfigChange(cfg.copy(format = fmt)) },
-                    label = { Text(fmt.label, fontSize = 11.sp) }
-                )
+                FilterChip(selected = cfg.format == fmt, onClick = { onConfigChange(cfg.copy(format = fmt)) }, label = { Text(fmt.label, fontSize = 11.sp) })
             }
         }
 
@@ -1504,20 +1760,12 @@ private fun ExportOptionsSheetContent(
             )
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Strip EXIF / GPS Metadata", color = TextPrimary, fontSize = 12.sp)
             Switch(checked = cfg.stripExif, onCheckedChange = { onConfigChange(cfg.copy(stripExif = it)) })
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Custom Handle Stamp", color = TextPrimary, fontSize = 12.sp)
             Switch(checked = cfg.includeSignature, onCheckedChange = { onConfigChange(cfg.copy(includeSignature = it)) })
         }
@@ -1533,22 +1781,13 @@ private fun ExportOptionsSheetContent(
         }
 
         if (isExporting) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(color = AccentGreen, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(8.dp))
                 Text("Rendering high-res export...", color = TextPrimary, fontSize = 12.sp)
             }
         } else if (lastResult != null) {
-            Surface(
-                color = BgCanvas,
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, AccentGreen),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Surface(color = BgCanvas, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, AccentGreen), modifier = Modifier.fillMaxWidth()) {
                 Text(lastResult.summary, color = AccentGreen, fontSize = 12.sp, modifier = Modifier.padding(10.dp))
             }
         }
@@ -1565,12 +1804,7 @@ private fun ExportOptionsSheetContent(
                 Spacer(Modifier.width(4.dp))
                 Text("Save Gallery", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-            OutlinedButton(
-                onClick = onExportZip,
-                enabled = !isExporting,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.weight(1f)
-            ) {
+            OutlinedButton(onClick = onExportZip, enabled = !isExporting, shape = RoundedCornerShape(10.dp), modifier = Modifier.weight(1f)) {
                 Icon(Icons.Default.FolderZip, null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Save ZIP", fontSize = 12.sp)
@@ -1579,8 +1813,16 @@ private fun ExportOptionsSheetContent(
                 Icon(Icons.Default.Share, "Share", modifier = Modifier.size(16.dp))
             }
         }
-
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+private fun parseHexColor(raw: String): Long? {
+    val clean = raw.trim().removePrefix("#")
+    return when (clean.length) {
+        6 -> clean.toLongOrNull(16)?.or(0xFF000000L)
+        8 -> clean.toLongOrNull(16)
+        else -> null
     }
 }
 
@@ -1590,13 +1832,15 @@ private fun composeColorMatrix(item: MediaItem): ColorMatrix {
     cm.timesAssign(sat)
     val c = item.contrast
     val b = item.brightness * 255f
+    val rBoost = item.warmth * 35f
+    val bBoost = -item.warmth * 35f
     val t = (-0.5f * c + 0.5f) * 255f + b
     cm.timesAssign(
         ColorMatrix(
             floatArrayOf(
-                c, 0f, 0f, 0f, t,
+                c, 0f, 0f, 0f, t + rBoost,
                 0f, c, 0f, 0f, t,
-                0f, 0f, c, 0f, t,
+                0f, 0f, c, 0f, t + bBoost,
                 0f, 0f, 0f, 1f, 0f
             )
         )
