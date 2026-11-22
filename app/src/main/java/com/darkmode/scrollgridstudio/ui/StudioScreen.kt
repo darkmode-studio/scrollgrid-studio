@@ -1187,22 +1187,34 @@ fun StudioScreen() {
                                         onClick = { layoutCountFilter = null },
                                         label = { Text("All", fontSize = 11.sp) }
                                     )
-                                    listOf(1, 2, 3, 4, 5, 6, 9).forEach { cnt ->
+                                    listOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12).forEach { cnt ->
                                         FilterChip(
                                             selected = layoutCountFilter == cnt,
                                             onClick = { layoutCountFilter = if (layoutCountFilter == cnt) null else cnt },
-                                            label = { Text(if (cnt == 9) "7+" else "$cnt", fontSize = 11.sp) }
+                                            label = { Text("$cnt", fontSize = 11.sp) }
+                                        )
+                                    }
+                                    listOf(16, 20).forEach { cnt ->
+                                        FilterChip(
+                                            selected = layoutCountFilter == cnt,
+                                            onClick = { layoutCountFilter = if (layoutCountFilter == cnt) null else cnt },
+                                            label = { Text("$cnt+", fontSize = 11.sp) }
                                         )
                                     }
                                 }
 
                                 // Filtered Visual Wireframe Row
+                                val recommendedCount = (state.slots.size + state.extras.size).takeIf { it > 0 }
                                 val filtered = LayoutStyle.entries.filter { layout ->
                                     val matchQuery = layoutSearchQuery.isBlank() ||
                                         layout.label.contains(layoutSearchQuery, ignoreCase = true) ||
                                         layout.category.contains(layoutSearchQuery, ignoreCase = true)
-                                    val matchCount = layoutCountFilter == null || layout.slotCount == layoutCountFilter
+                                    val matchCount = layoutCountFilter == null ||
+                                        if (layoutCountFilter >= 16) layout.slotCount >= layoutCountFilter else layout.slotCount == layoutCountFilter
                                     matchQuery && matchCount
+                                }.sortedBy { layout ->
+                                    if (recommendedCount == null || layoutCountFilter != null) 0
+                                    else kotlin.math.abs(layout.slotCount - recommendedCount)
                                 }
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(filtered) { layout ->
@@ -1292,7 +1304,14 @@ fun StudioScreen() {
                                         value = state.borderDp.toFloat(),
                                         range = 0f..36f,
                                         valueText = "${state.borderDp}",
-                                        onValueChange = { state = state.copy(borderDp = it.roundToInt(), outerMarginDp = it.roundToInt()) }
+                                        onValueChange = { state = state.copy(borderDp = it.roundToInt()) }
+                                    )
+                                    SliderWithValue(
+                                        label = "Outer margin",
+                                        value = state.outerMarginDp.toFloat(),
+                                        range = 0f..48f,
+                                        valueText = "${state.outerMarginDp}",
+                                        onValueChange = { state = state.copy(outerMarginDp = it.roundToInt()) }
                                     )
                                     // Corner Radius Slider + Value
                                     SliderWithValue(
@@ -1790,294 +1809,4 @@ private fun LayoutThumbnailChip(layout: LayoutStyle, selected: Boolean, onClick:
         onClick = onClick,
         shape = RoundedCornerShape(10.dp),
         color = if (selected) Color(0xFF1A2E22) else BgCanvas,
-        border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Canvas(modifier = Modifier.size(30.dp)) {
-                layout.slotRects().forEach { r ->
-                    drawRect(
-                        color = if (selected) AccentGreen else TextSecondary,
-                        topLeft = Offset(r.left * size.width + 1f, r.top * size.height + 1f),
-                        size = Size((r.width * size.width - 2f).coerceAtLeast(2f), (r.height * size.height - 2f).coerceAtLeast(2f)),
-                        style = Stroke(width = 1.5f)
-                    )
-                }
-            }
-            Text(layout.label, color = if (selected) TextPrimary else TextSecondary, fontSize = 9.sp)
-        }
-    }
-}
-
-@Composable
-private fun MediaTileImage(item: MediaItem, modifier: Modifier) {
-    Box(modifier = modifier) {
-        AsyncImage(
-            model = item.uri,
-            contentDescription = "Media tile",
-            contentScale = if (item.fitInside) ContentScale.Fit else ContentScale.Crop,
-            colorFilter = ColorFilter.colorMatrix(composeColorMatrix(item)),
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = (if (item.flipHorizontal) -1f else 1f) * item.scale
-                    scaleY = item.scale
-                    translationX = item.panX
-                    translationY = item.panY
-                    rotationZ = item.rotationDeg
-                }
-        )
-        if (item.vignette > 0.02f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = (item.vignette * 0.75f).coerceIn(0f, 0.75f)))
-                        )
-                    )
-            )
-        }
-        if (item.isVideo) {
-            Surface(
-                color = Color(0xCC0B0D10),
-                shape = RoundedCornerShape(6.dp),
-                modifier = Modifier.align(Alignment.TopEnd).padding(5.dp)
-            ) {
-                Row(modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Videocam, null, tint = AccentGreen, modifier = Modifier.size(11.dp))
-                    Spacer(Modifier.width(2.dp))
-                    Text("VIDEO", color = TextPrimary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StepperRow(label: String, valueText: String, onMinus: () -> Unit, onPlus: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, color = TextSecondary, fontSize = 11.sp)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Surface(onClick = onMinus, shape = CircleShape, color = BgCanvas, border = BorderStroke(1.dp, BorderSubtle)) {
-                Icon(Icons.Default.Remove, "Decrease $label", tint = TextPrimary, modifier = Modifier.padding(4.dp).size(15.dp))
-            }
-            Text(valueText, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.widthIn(min = 58.dp))
-            Surface(onClick = onPlus, shape = CircleShape, color = BgCanvas, border = BorderStroke(1.dp, BorderSubtle)) {
-                Icon(Icons.Default.Add, "Increase $label", tint = TextPrimary, modifier = Modifier.padding(4.dp).size(15.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExportOptionsSheetContent(
-    state: StudioState,
-    isExporting: Boolean,
-    lastResult: ExportResult?,
-    onConfigChange: (ExportConfig) -> Unit,
-    onExportGallery: () -> Unit,
-    onExportZip: () -> Unit,
-    onShare: () -> Unit
-) {
-    val cfg = state.exportConfig
-    val w = cfg.outputWidthPx()
-    val h = cfg.outputHeightPx()
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .navigationBarsPadding(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Photo Export Options", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-            Surface(color = Color(0xFF1A2E22), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, AccentGreen)) {
-                Text("${w} × ${h} px • sRGB", color = AccentGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-            }
-        }
-
-        Text("Export Mode", color = TextSecondary, fontSize = 12.sp)
-        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ExportMode.entries.forEach { mode ->
-                FilterChip(selected = cfg.mode == mode, onClick = { onConfigChange(cfg.copy(mode = mode)) }, label = { Text(mode.label, fontSize = 11.sp) })
-            }
-        }
-
-        if (state.mode == StudioMode.CAROUSEL && cfg.mode == ExportMode.AUTO_SLICE) {
-            Text("Slide Save Order", color = TextSecondary, fontSize = 12.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SlideOrder.entries.forEach { order ->
-                    FilterChip(selected = cfg.slideOrder == order, onClick = { onConfigChange(cfg.copy(slideOrder = order)) }, label = { Text(order.label, fontSize = 11.sp) })
-                }
-            }
-        }
-
-        if (state.mode == StudioMode.CAROUSEL && cfg.mode == ExportMode.SELECTED_SLIDE) {
-            StepperRow(
-                label = "Slide to Export",
-                valueText = "Slide ${cfg.selectedSlideNumber.coerceIn(1, state.carouselSlides)}",
-                onMinus = { onConfigChange(cfg.copy(selectedSlideNumber = (cfg.selectedSlideNumber - 1).coerceAtLeast(1))) },
-                onPlus = { onConfigChange(cfg.copy(selectedSlideNumber = (cfg.selectedSlideNumber + 1).coerceAtMost(state.carouselSlides))) }
-            )
-        }
-
-        Text("Aspect Ratio & Print Sizes", color = TextSecondary, fontSize = 12.sp)
-        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            AspectRatioOption.entries.forEach { ratio ->
-                FilterChip(selected = cfg.aspectRatio == ratio, onClick = { onConfigChange(cfg.copy(aspectRatio = ratio)) }, label = { Text(ratio.shortLabel, fontSize = 11.sp) })
-            }
-        }
-
-        if (cfg.aspectRatio == AspectRatioOption.CUSTOM) {
-            StepperRow(
-                label = "Custom Width",
-                valueText = "${cfg.customWidthPx} px",
-                onMinus = { onConfigChange(cfg.copy(customWidthPx = (cfg.customWidthPx - 120).coerceAtLeast(360))) },
-                onPlus = { onConfigChange(cfg.copy(customWidthPx = (cfg.customWidthPx + 120).coerceAtMost(4320))) }
-            )
-            StepperRow(
-                label = "Custom Height",
-                valueText = "${cfg.customHeightPx} px",
-                onMinus = { onConfigChange(cfg.copy(customHeightPx = (cfg.customHeightPx - 120).coerceAtLeast(360))) },
-                onPlus = { onConfigChange(cfg.copy(customHeightPx = (cfg.customHeightPx + 120).coerceAtMost(4320))) }
-            )
-        } else if (cfg.aspectRatio.printWidthPx == null) {
-            Text("Resolution", color = TextSecondary, fontSize = 12.sp)
-            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ResolutionPreset.entries.forEach { res ->
-                    FilterChip(selected = cfg.resolution == res, onClick = { onConfigChange(cfg.copy(resolution = res)) }, label = { Text(res.label, fontSize = 11.sp) })
-                }
-            }
-        }
-
-        Text("File Format", color = TextSecondary, fontSize = 12.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ExportFormat.entries.forEach { fmt ->
-                FilterChip(selected = cfg.format == fmt, onClick = { onConfigChange(cfg.copy(format = fmt)) }, label = { Text(fmt.label, fontSize = 11.sp) })
-            }
-        }
-
-        if (cfg.format != ExportFormat.PNG) {
-            StepperRow(
-                label = "Compression Quality",
-                valueText = "${cfg.qualityPercent}%",
-                onMinus = { onConfigChange(cfg.copy(qualityPercent = (cfg.qualityPercent - 5).coerceAtLeast(80))) },
-                onPlus = { onConfigChange(cfg.copy(qualityPercent = (cfg.qualityPercent + 5).coerceAtMost(100))) }
-            )
-        }
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Strip EXIF / GPS Metadata", color = TextPrimary, fontSize = 12.sp)
-            Switch(checked = cfg.stripExif, onCheckedChange = { onConfigChange(cfg.copy(stripExif = it)) })
-        }
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Custom Handle Stamp", color = TextPrimary, fontSize = 12.sp)
-            Switch(checked = cfg.includeSignature, onCheckedChange = { onConfigChange(cfg.copy(includeSignature = it)) })
-        }
-
-        if (cfg.includeSignature) {
-            OutlinedTextField(
-                value = cfg.signatureText,
-                onValueChange = { onConfigChange(cfg.copy(signatureText = it)) },
-                label = { Text("Signature Handle", fontSize = 11.sp) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-
-        if (isExporting) {
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(color = AccentGreen, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                Spacer(Modifier.width(8.dp))
-                Text("Rendering high-res export...", color = TextPrimary, fontSize = 12.sp)
-            }
-        } else if (lastResult != null) {
-            Surface(color = BgCanvas, shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, AccentGreen), modifier = Modifier.fillMaxWidth()) {
-                Text(lastResult.summary, color = AccentGreen, fontSize = 12.sp, modifier = Modifier.padding(10.dp))
-            }
-        }
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = onExportGallery,
-                enabled = !isExporting,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color(0xFF05130A)),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(Icons.Default.Download, null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Save Gallery", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-            OutlinedButton(onClick = onExportZip, enabled = !isExporting, shape = RoundedCornerShape(10.dp), modifier = Modifier.weight(1f)) {
-                Icon(Icons.Default.FolderZip, null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Save ZIP", fontSize = 12.sp)
-            }
-            OutlinedButton(onClick = onShare, enabled = !isExporting, shape = RoundedCornerShape(10.dp)) {
-                Icon(Icons.Default.Share, "Share", modifier = Modifier.size(16.dp))
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-    }
-}
-
-private fun samplePhotoPalette(context: Context, uris: List<Uri>): List<Long> {
-    val result = mutableListOf(0xFFF3F4F6L)
-    uris.forEach { uri ->
-        runCatching {
-            val opts = BitmapFactory.Options().apply { inSampleSize = 16 }
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                val bmp = BitmapFactory.decodeStream(stream, null, opts) ?: return@use
-                val cx = bmp.width / 2
-                val cy = bmp.height / 2
-                val points = listOf(cx to cy, bmp.width / 4 to bmp.height / 4, (bmp.width * 3) / 4 to (bmp.height * 3) / 4)
-                points.forEach { (x, y) ->
-                    if (x in 0 until bmp.width && y in 0 until bmp.height && result.size < 6) {
-                        val px = bmp.getPixel(x, y).toLong() and 0xFFFFFFFFL
-                        if (result.none { it == px }) result.add(px)
-                    }
-                }
-                bmp.recycle()
-            }
-        }
-    }
-    return if (result.size >= 3) result.take(6) else DefaultPhotoPalette
-}
-
-private fun composeColorMatrix(item: MediaItem): ColorMatrix {
-    val cm = ColorMatrix()
-    val sat = ColorMatrix().apply { setToSaturation(item.saturation) }
-    cm.timesAssign(sat)
-    val c = item.contrast
-    val b = item.brightness * 255f
-    val rBoost = item.warmth * 35f
-    val bBoost = -item.warmth * 35f
-    val t = (-0.5f * c + 0.5f) * 255f + b
-    cm.timesAssign(
-        ColorMatrix(
-            floatArrayOf(
-                c, 0f, 0f, 0f, t + rBoost,
-                0f, c, 0f, 0f, t,
-                0f, 0f, c, 0f, t + bBoost,
-                0f, 0f, 0f, 1f, 0f
-            )
-        )
-    )
-    return cm
-}
+        border = BorderStroke(1.dp, if (sel
