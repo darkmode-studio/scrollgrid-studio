@@ -1,5 +1,7 @@
 package com.darkmode.scrollgridstudio
 
+import com.darkmode.scrollgridstudio.ui.theme.ThemePreference
+
 import com.darkmode.scrollgridstudio.model.AspectRatioOption
 import com.darkmode.scrollgridstudio.model.ExportConfig
 import com.darkmode.scrollgridstudio.model.LayoutStyle
@@ -11,6 +13,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StudioStateTest {
+    @Test
+    fun themePreferenceDefaultsToSystemAndRestoresSavedChoice() {
+        assertEquals(ThemePreference.SYSTEM, ThemePreference.fromStorage(null))
+        assertEquals(ThemePreference.LIGHT, ThemePreference.fromStorage("LIGHT"))
+        assertEquals(ThemePreference.DARK, ThemePreference.fromStorage("DARK"))
+        assertEquals(ThemePreference.SYSTEM, ThemePreference.fromStorage("unknown"))
+    }
+
     @Test
     fun newProjectsUseApprovedControlDefaults() {
         val state = StudioState()
