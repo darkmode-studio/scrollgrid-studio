@@ -1841,6 +1841,7 @@ private fun LayoutThumbnailChip(layout: LayoutStyle, selected: Boolean, onClick:
         color = if (selected) Color(0xFFE0E6FF) else BgCanvas,
         border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
     ) {
+        val thumbnailColor = if (selected) AccentGreen else TextSecondary
         Column(
             modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1849,7 +1850,7 @@ private fun LayoutThumbnailChip(layout: LayoutStyle, selected: Boolean, onClick:
             Canvas(modifier = Modifier.size(30.dp)) {
                 layout.slotRects().forEach { r ->
                     drawRect(
-                        color = if (selected) AccentGreen else TextSecondary,
+                        color = thumbnailColor,
                         topLeft = Offset(r.left * size.width + 1f, r.top * size.height + 1f),
                         size = Size((r.width * size.width - 2f).coerceAtLeast(2f), (r.height * size.height - 2f).coerceAtLeast(2f)),
                         style = Stroke(width = 1.5f)
