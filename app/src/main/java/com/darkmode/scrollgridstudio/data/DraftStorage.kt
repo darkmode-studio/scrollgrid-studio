@@ -21,13 +21,20 @@ object DraftStorage {
             val jsonStr = prefs.getString("draft_$id", null) ?: continue
             runCatching {
                 val obj = JSONObject(jsonStr)
+                val slotsArr = obj.optJSONArray("slots") ?: JSONArray()
+                val previews = mutableListOf<String>()
+                for (j in 0 until minOf(slotsArr.length(), 4)) {
+                    val u = slotsArr.optJSONObject(j)?.optString("uri", "") ?: ""
+                    if (u.isNotBlank()) previews.add(u)
+                }
                 out.add(
                     SavedDraftMeta(
                         id = id,
                         name = obj.optString("projectName", "Untitled Collage"),
                         updatedAtMillis = obj.optLong("updatedAt", 0L),
                         modeTitle = obj.optString("mode", StudioMode.GRID.name),
-                        itemCount = obj.optJSONArray("slots")?.length() ?: 0
+                        itemCount = slotsArr.length(),
+                        previewUris = previews
                     )
                 )
             }
@@ -57,6 +64,11 @@ object DraftStorage {
             .putString(KEY_INDEX, newArr.toString())
             .apply()
         return id
+    }
+
+    fun duplicateDraft(context: Context, id: String): String? {
+        val loaded = loadDraft(context, id) ?: return null
+        return saveDraft(context, loaded.copy(projectName = "${loaded.projectName} Copy"), existingId = null)
     }
 
     fun loadDraft(context: Context, id: String): StudioState? {
@@ -137,6 +149,7 @@ object DraftStorage {
                     put("usePill", ov.usePill)
                     put("textColorHex", ov.textColorHex)
                     put("fontStyle", ov.fontStyle.name)
+                    put("fontName", ov.fontName)
                     put("alignment", ov.alignment.name)
                     put("opacity", ov.opacity.toDouble())
                     put("isSticker", ov.isSticker)
@@ -197,6 +210,7 @@ object DraftStorage {
                     usePill = o.optBoolean("usePill", true),
                     textColorHex = o.optLong("textColorHex", 0xFFF3F4F6),
                     fontStyle = runCatching { TextFontStyle.valueOf(o.optString("fontStyle")) }.getOrDefault(TextFontStyle.SANS_BOLD),
+                    fontName = o.optString("fontName", "Roboto"),
                     alignment = runCatching { TextAlignOption.valueOf(o.optString("alignment")) }.getOrDefault(TextAlignOption.CENTER),
                     opacity = o.optDouble("opacity", 1.0).toFloat(),
                     isSticker = o.optBoolean("isSticker", false),
@@ -214,7 +228,7 @@ object DraftStorage {
             layout = runCatching { LayoutStyle.valueOf(obj.optString("layout")) }.getOrDefault(LayoutStyle.GRID_2X2),
             carouselSlides = obj.optInt("carouselSlides", 3),
             outerMarginDp = obj.optInt("outerMarginDp", 10),
-            borderDp = obj.optInt("borderDp", 8),
+            borderDp = obj.optInt("borderDp", 10),
             cornerRadiusDp = obj.optInt("cornerRadiusDp", 12),
             backgroundStyle = runCatching { BackgroundStyle.valueOf(obj.optString("backgroundStyle")) }.getOrDefault(BackgroundStyle.OBSIDIAN),
             customBgHex = customBg,

@@ -27,22 +27,22 @@ data class SlotRect(
     val maskShape: TileMaskShape = TileMaskShape.RECTANGLE
 )
 
-enum class LayoutStyle(val label: String, val slotCount: Int) {
-    SINGLE_1("1 Full", 1),
-    SPLIT_2_H("2 Split H", 2),
-    SPLIT_2_V("2 Split V", 2),
-    SLANT_SPLIT_2("Slant 2", 2),
-    POLAROID_2("Polaroid 2", 2),
-    SLANT_3("Hero 3", 3),
-    STAR_FEATURE_3("Star 3", 3),
-    FILM_3("Film 3", 3),
-    GRID_2X2("2x2 Grid", 4),
-    BENTO_4("Bento 4", 4),
-    HEX_HONEYCOMB_4("Hex 4", 4),
-    HEART_COLLAGE_3("Heart 3", 3),
-    GRID_5("Mosaic 5", 5),
-    GRID_6("2x3 Grid", 6),
-    GRID_9("3x3 Grid", 9);
+enum class LayoutStyle(val label: String, val slotCount: Int, val category: String) {
+    SINGLE_1("1 Full", 1, "Classic"),
+    SPLIT_2_H("2 Split H", 2, "Classic"),
+    SPLIT_2_V("2 Split V", 2, "Classic"),
+    SLANT_SPLIT_2("Slant 2", 2, "Shapes"),
+    POLAROID_2("Polaroid 2", 2, "Classic"),
+    SLANT_3("Hero 3", 3, "Hero"),
+    STAR_FEATURE_3("Star 3", 3, "Shapes"),
+    FILM_3("Film 3", 3, "Hero"),
+    HEART_COLLAGE_3("Heart 3", 3, "Shapes"),
+    GRID_2X2("2x2 Grid", 4, "Classic"),
+    BENTO_4("Bento 4", 4, "Hero"),
+    HEX_HONEYCOMB_4("Hex 4", 4, "Shapes"),
+    GRID_5("Mosaic 5", 5, "Masonry"),
+    GRID_6("2x3 Grid", 6, "Masonry"),
+    GRID_9("3x3 Grid", 9, "Masonry");
 
     fun slotRects(): List<SlotRect> = when (this) {
         SINGLE_1 -> listOf(SlotRect(0f, 0f, 1f, 1f))
@@ -184,11 +184,11 @@ enum class TextAlignOption(val label: String) {
 
 enum class StudioTab(val label: String) {
     LAYOUT("Layout"),
-    MEDIA("Media"),
-    BG("BG"),
+    CONTROLS("Controls"),
+    STYLE("Style"),
     TEXT("Text"),
-    STICKERS("Stickers"),
-    FILTERS("Filters")
+    CREATIVE("Creative"),
+    FREESTYLE("Freestyle")
 }
 
 enum class ExportMode(val label: String) {
@@ -210,23 +210,24 @@ enum class ResolutionPreset(val label: String, val baseWidth: Int) {
 
 enum class AspectRatioOption(
     val label: String,
+    val shortLabel: String,
     val widthRatio: Int,
     val heightRatio: Int,
     val printWidthPx: Int? = null,
     val printHeightPx: Int? = null
 ) {
-    PORTRAIT_4_5("4:5 Feed", 4, 5),
-    GRID_3_4("3:4 Grid", 3, 4),
-    SQUARE_1_1("1:1 Square", 1, 1),
-    PHOTO_2_3("2:3 Photo", 2, 3),
-    STORY_9_16("9:16 Story", 9, 16),
-    WIDE_16_9("16:9 Wide", 16, 9),
-    WIDE_191_1("1.91:1 Link", 191, 100),
-    PRINT_4X6("4x6 Print", 4, 6, 1200, 1800),
-    PRINT_5X7("5x7 Print", 5, 7, 1500, 2100),
-    PRINT_8X10("8x10 Print", 8, 10, 2400, 3000),
-    PRINT_A4("A4 Print", 210, 297, 2480, 3508),
-    CUSTOM("Custom px", 4, 5);
+    SQUARE_1_1("1:1 Square", "1:1", 1, 1),
+    PORTRAIT_4_5("4:5 Portrait (Feed)", "4:5", 4, 5),
+    GRID_3_4("3:4 Classic", "3:4", 3, 4),
+    PHOTO_2_3("2:3 Photo", "2:3", 2, 3),
+    STORY_9_16("9:16 Story (Reels)", "9:16", 9, 16),
+    WIDE_16_9("16:9 Wide", "16:9", 16, 9),
+    WIDE_191_1("1.91:1 Landscape (Feed)", "1.91:1", 191, 100),
+    PRINT_4X6("Print 4x6 (1200x1800)", "4x6", 4, 6, 1200, 1800),
+    PRINT_5X7("Print 5x7 (1500x2100)", "5x7", 5, 7, 1500, 2100),
+    PRINT_8X10("Print 8x10 (2400x3000)", "8x10", 8, 10, 2400, 3000),
+    PRINT_A4("Print A4 (2480x3508)", "A4", 210, 297, 2480, 3508),
+    CUSTOM("Custom sizes (Any px)", "Custom", 4, 5);
 
     fun heightForWidth(widthPx: Int): Int =
         ((widthPx.toLong() * heightRatio) / widthRatio).toInt().coerceAtLeast(1)
@@ -275,6 +276,7 @@ data class TextOverlay(
     val useOutline: Boolean = true,
     val textColorHex: Long = 0xFFF3F4F6,
     val fontStyle: TextFontStyle = TextFontStyle.SANS_BOLD,
+    val fontName: String = "Roboto",
     val alignment: TextAlignOption = TextAlignOption.CENTER,
     val opacity: Float = 1f,
     val isSticker: Boolean = false,
@@ -314,7 +316,8 @@ data class SavedDraftMeta(
     val name: String,
     val updatedAtMillis: Long,
     val modeTitle: String,
-    val itemCount: Int
+    val itemCount: Int,
+    val previewUris: List<String> = emptyList()
 )
 
 data class StudioState(
@@ -326,7 +329,7 @@ data class StudioState(
     val activeSlideIndex: Int = 0,
     val showGuides: Boolean = true,
     val outerMarginDp: Int = 10,
-    val borderDp: Int = 8,
+    val borderDp: Int = 10,
     val cornerRadiusDp: Int = 12,
     val backgroundStyle: BackgroundStyle = BackgroundStyle.OBSIDIAN,
     val customBgHex: Long? = null,

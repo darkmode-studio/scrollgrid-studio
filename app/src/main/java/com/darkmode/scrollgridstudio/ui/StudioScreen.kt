@@ -1,5 +1,7 @@
 package com.darkmode.scrollgridstudio.ui
 
+import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -65,6 +67,7 @@ private enum class AppScreen { HOME, EDITOR, PREVIEW }
 
 private val BgCanvas = Color(0xFF0B0D10)
 private val BgPanel = Color(0xFF14171D)
+private val BgElevated = Color(0xFF1B2029)
 private val BorderSubtle = Color(0xFF242933)
 private val AccentGreen = Color(0xFF22C55E)
 private val CyanGuide = Color(0xFF38BDF8)
@@ -72,14 +75,13 @@ private val DangerRed = Color(0xFFEF4444)
 private val TextPrimary = Color(0xFFF3F4F6)
 private val TextSecondary = Color(0xFF9CA3AF)
 
-private val TextSwatches = listOf(
+private val DefaultPhotoPalette = listOf(
     0xFFF3F4F6L,
-    0xFF0B0D10L,
-    0xFF22C55EL,
-    0xFFFACC15L,
-    0xFF38BDF8L,
-    0xFFF43F5EL,
-    0xFFF97316L
+    0xFF1F2421L,
+    0xFF52796FL,
+    0xFFCAD2C5L,
+    0xFF8C5319L,
+    0xFF38BDF8L
 )
 
 private val BorderSwatches = listOf(
@@ -89,6 +91,19 @@ private val BorderSwatches = listOf(
     0xFF22C55EL,
     0xFFFACC15L,
     0xFF38BDF8L
+)
+
+private data class FontCatalogItem(val name: String, val style: TextFontStyle)
+
+private val FontCatalog = listOf(
+    FontCatalogItem("Roboto", TextFontStyle.SANS_BOLD),
+    FontCatalogItem("Open Sans", TextFontStyle.SANS_BOLD),
+    FontCatalogItem("Lato", TextFontStyle.SANS_BOLD),
+    FontCatalogItem("Montserrat", TextFontStyle.SANS_BOLD),
+    FontCatalogItem("Authentic", TextFontStyle.SERIF),
+    FontCatalogItem("Archive", TextFontStyle.MONO),
+    FontCatalogItem("Bebas", TextFontStyle.SANS_BOLD),
+    FontCatalogItem("Calligraphy", TextFontStyle.ITALIC)
 )
 
 private fun bestLayoutForCount(count: Int): LayoutStyle = when {
@@ -114,12 +129,28 @@ fun StudioScreen() {
     var activeDraftId by remember { mutableStateOf<String?>(null) }
     var draftsList by remember { mutableStateOf(DraftStorage.listDrafts(context)) }
 
+    var showRatioMenu by remember { mutableStateOf(false) }
+    var showExportSheet by remember { mutableStateOf(false) }
+    var showTrayPanel by remember { mutableStateOf(true) }
+    var controlsScopeAll by remember { mutableStateOf(true) }
+    var layoutSearchQuery by remember { mutableStateOf("") }
+    var layoutCountFilter by remember { mutableStateOf<Int?>(null) }
+    var photoPalette by remember { mutableStateOf(DefaultPhotoPalette) }
+
     var textInput by remember { mutableStateOf("") }
     var hexInput by remember { mutableStateOf("#0B0D10") }
-    var showExportSheet by remember { mutableStateOf(false) }
     var isExporting by remember { mutableStateOf(false) }
     var lastExportResult by remember { mutableStateOf<ExportResult?>(null) }
     var statusBanner by remember { mutableStateOf("ScrollGrid Studio • Ready") }
+
+    // Dynamically sample "From your photos" palette whenever slots change
+    LaunchedEffect(state.slots.map { it.uri }) {
+        val uris = state.slots.take(3).map { it.uri }
+        if (uris.isNotEmpty()) {
+            val sampled = withContext(Dispatchers.IO) { samplePhotoPalette(context, uris) }
+            if (sampled.isNotEmpty()) photoPalette = sampled
+        }
+    }
 
     fun pushState(next: StudioState, recordHistory: Boolean = true) {
         if (recordHistory && next != state) {
@@ -149,7 +180,6 @@ fun StudioScreen() {
         }
     }
 
-    // Photo-first smart picker from Home Hub
     val homeGridPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(24)
     ) { uris: List<Uri> ->
@@ -170,13 +200,14 @@ fun StudioScreen() {
         undoStack = emptyList()
         redoStack = emptyList()
         state = StudioState(
-            projectName = "Grid (${items.size} photos)",
+            projectName = "Collage (${items.size} photos)",
             mode = StudioMode.GRID,
             layout = matched,
             slots = items.take(cap),
             extras = items.drop(cap)
         )
-        statusBanner = "Auto-matched ${matched.label} for ${items.size} item(s)"
+        statusBanner = "Auto-matched ${matched.label}"
+        showTrayPanel = true
         currentScreen = AppScreen.EDITOR
     }
 
@@ -207,7 +238,7 @@ fun StudioScreen() {
                     swapSourceIndex = null
                 )
             )
-            statusBanner = "Added ${added.size} item(s) • ${pool.take(cap).size}/$cap active"
+            statusBanner = "Added ${added.size} item(s)"
         }
     }
 
@@ -366,7 +397,7 @@ fun StudioScreen() {
             pushState(state.copy(slots = swapped, selectedSlotIndex = idx, swapSourceIndex = null))
             statusBanner = "Swapped tile #${swapSrc + 1} with #${idx + 1}"
         } else {
-            state = state.copy(selectedSlotIndex = idx, swapSourceIndex = null)
+            state = state.copy(selectedSlotIndex = idx, swapSourceIndex = null, selectedOverlayId = null)
         }
     }
 
@@ -381,12 +412,9 @@ fun StudioScreen() {
                     activeDraftId = null
                     undoStack = emptyList()
                     redoStack = emptyList()
-                    state = StudioState(
-                        projectName = "Carousel ($slides slides)",
-                        mode = StudioMode.CAROUSEL,
-                        carouselSlides = slides
-                    )
-                    statusBanner = "New $slides-slide seamless carousel"
+                    state = StudioState(projectName = "Carousel ($slides slides)", mode = StudioMode.CAROUSEL, carouselSlides = slides)
+                    statusBanner = "New $slides-slide SCRL carousel"
+                    showTrayPanel = true
                     currentScreen = AppScreen.EDITOR
                 },
                 onStartFreeform = {
@@ -395,10 +423,12 @@ fun StudioScreen() {
                     redoStack = emptyList()
                     state = StudioState(projectName = "Freeform Collage", mode = StudioMode.FREESTYLE)
                     statusBanner = "New freeform canvas"
+                    showTrayPanel = true
                     currentScreen = AppScreen.EDITOR
                 },
                 onSelectScrlTemplate = { tpl ->
                     applyScrlTemplate(tpl, resetProject = true)
+                    showTrayPanel = true
                     currentScreen = AppScreen.EDITOR
                 },
                 onSelectGridTemplate = { layout ->
@@ -406,7 +436,8 @@ fun StudioScreen() {
                     undoStack = emptyList()
                     redoStack = emptyList()
                     state = StudioState(projectName = layout.label, mode = StudioMode.GRID, layout = layout)
-                    statusBanner = "Started ${layout.label} template"
+                    statusBanner = "Started ${layout.label}"
+                    showTrayPanel = true
                     currentScreen = AppScreen.EDITOR
                 },
                 onOpenDraft = { draft ->
@@ -417,8 +448,13 @@ fun StudioScreen() {
                         redoStack = emptyList()
                         state = loaded
                         statusBanner = "Opened '${loaded.projectName}'"
+                        showTrayPanel = true
                         currentScreen = AppScreen.EDITOR
                     }
+                },
+                onDuplicateDraft = { draft ->
+                    DraftStorage.duplicateDraft(context, draft.id)
+                    draftsList = DraftStorage.listDrafts(context)
                 },
                 onDeleteDraft = { draft ->
                     DraftStorage.deleteDraft(context, draft.id)
@@ -436,6 +472,9 @@ fun StudioScreen() {
         }
 
         AppScreen.EDITOR -> {
+            val selMedia = state.slots.getOrNull(state.selectedSlotIndex)
+            val selOverlay = state.overlays.find { it.id == state.selectedOverlayId }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -443,15 +482,15 @@ fun StudioScreen() {
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-                // 1. Minimal Focused Top Bar: Home, Mode, Undo/Redo, Preview, Lock, Export
+                // 1. Reference-Style Top Bar: Home/New, Ratio Dropdown Pill (4:5 v), Undo/Redo, Preview Pill, Export, Share
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
                         .background(BgPanel)
-                        .padding(horizontal = 6.dp),
+                        .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     IconButton(
                         onClick = {
@@ -463,123 +502,111 @@ fun StudioScreen() {
                         },
                         modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(Icons.Default.ArrowBack, "Home", tint = TextPrimary, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.ArrowBack, "My Collages", tint = TextPrimary, modifier = Modifier.size(19.dp))
                     }
 
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        StudioMode.entries.forEach { mode ->
-                            val selected = state.mode == mode
-                            Surface(
-                                onClick = { applyLayoutCapacity(mode, state.layout, state.carouselSlides) },
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (selected) Color(0xFF232934) else Color.Transparent,
-                                border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
+                    // Ratio Dropdown Pill (4:5 v)
+                    Box {
+                        Surface(
+                            onClick = { showRatioMenu = true },
+                            shape = RoundedCornerShape(16.dp),
+                            color = BgElevated,
+                            border = BorderStroke(1.dp, BorderSubtle)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                Text(
-                                    text = mode.title,
-                                    color = if (selected) TextPrimary else TextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                Text(state.exportConfig.aspectRatio.shortLabel, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Icon(Icons.Default.KeyboardArrowDown, null, tint = TextSecondary, modifier = Modifier.size(16.dp))
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showRatioMenu,
+                            onDismissRequest = { showRatioMenu = false },
+                            containerColor = BgElevated
+                        ) {
+                            AspectRatioOption.entries.forEach { ratio ->
+                                val selected = state.exportConfig.aspectRatio == ratio
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(
+                                                text = ratio.label,
+                                                color = if (selected) AccentGreen else TextPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+                                    },
+                                    trailingIcon = {
+                                        if (selected) Icon(Icons.Default.Check, null, tint = AccentGreen, modifier = Modifier.size(16.dp))
+                                    },
+                                    onClick = {
+                                        showRatioMenu = false
+                                        pushState(state.copy(exportConfig = state.exportConfig.copy(aspectRatio = ratio)))
+                                        if (ratio == AspectRatioOption.CUSTOM) showExportSheet = true
+                                    }
                                 )
                             }
                         }
                     }
 
-                    IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Undo, "Undo", tint = if (undoStack.isNotEmpty()) TextPrimary else Color(0xFF4B5563), modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.weight(1f))
+
+                    IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Default.Undo, "Undo", tint = if (undoStack.isNotEmpty()) TextPrimary else Color(0xFF4B5563), modifier = Modifier.size(18.dp))
                     }
-                    IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Redo, "Redo", tint = if (redoStack.isNotEmpty()) TextPrimary else Color(0xFF4B5563), modifier = Modifier.size(17.dp))
-                    }
-                    IconButton(onClick = { currentScreen = AppScreen.PREVIEW }, modifier = Modifier.size(30.dp)) {
-                        Icon(Icons.Default.PlayArrow, "Swipe Preview", tint = CyanGuide, modifier = Modifier.size(20.dp))
+                    IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Default.Redo, "Redo", tint = if (redoStack.isNotEmpty()) TextPrimary else Color(0xFF4B5563), modifier = Modifier.size(18.dp))
                     }
 
+                    // SCRL-Style Preview Pill
                     Surface(
-                        onClick = {
-                            val locked = !state.canvasLocked
-                            state = state.copy(canvasLocked = locked)
-                            statusBanner = if (locked) "Canvas locked" else "Canvas unlocked"
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (state.canvasLocked) Color(0xFF1A2E22) else BgCanvas,
-                        border = BorderStroke(1.dp, if (state.canvasLocked) AccentGreen else BorderSubtle)
+                        onClick = { currentScreen = AppScreen.PREVIEW },
+                        shape = RoundedCornerShape(16.dp),
+                        color = BgElevated,
+                        border = BorderStroke(1.dp, BorderSubtle)
                     ) {
-                        Icon(
-                            imageVector = if (state.canvasLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                            contentDescription = "Lock Canvas",
-                            tint = if (state.canvasLocked) AccentGreen else TextSecondary,
-                            modifier = Modifier.padding(5.dp).size(15.dp)
+                        Text(
+                            text = "Preview",
+                            color = TextPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }
 
-                    Button(
-                        onClick = { showExportSheet = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color(0xFF05130A)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp)
+                    IconButton(onClick = { showExportSheet = true }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Download, "Export", tint = AccentGreen, modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                val res = lastExportResult ?: withContext(Dispatchers.IO) {
+                                    CollageExporter.exportStudio(context, state, asZip = false)
+                                }.also { lastExportResult = it }
+                                if (res != null) {
+                                    CollageExporter.shareUris(context, res.uris, state.exportConfig.format.mimeType)
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        Text("Export", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Share, "Share", tint = TextPrimary, modifier = Modifier.size(18.dp))
                     }
                 }
 
                 HorizontalDivider(thickness = 1.dp, color = BorderSubtle)
 
-                // Status & Draft Strip
-                Row(
-                    modifier = Modifier.fillMaxWidth().background(BgCanvas).padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = if (state.swapSourceIndex != null) "Tap another tile to swap with #${state.swapSourceIndex!! + 1}" else statusBanner,
-                        color = if (state.swapSourceIndex != null) CyanGuide else TextSecondary,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "Save",
-                            color = AccentGreen,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.clickable {
-                                activeDraftId = DraftStorage.saveDraft(context, state, activeDraftId)
-                                draftsList = DraftStorage.listDrafts(context)
-                                statusBanner = "Saved to My Collages"
-                            }
-                        )
-                        if (state.slots.isNotEmpty() || state.overlays.isNotEmpty()) {
-                            Text(
-                                text = "Reset",
-                                color = DangerRed,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable {
-                                    pushState(StudioState(projectName = state.projectName, mode = state.mode, layout = state.layout, carouselSlides = state.carouselSlides))
-                                    statusBanner = "Canvas cleared"
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // 2. Focused Canvas Viewport (~68% of screen)
+                // 2. Canvas Viewport with SCRL Floating Action Pill (Delete / Duplicate / Lock)
                 BoxWithConstraints(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     val density = LocalDensity.current
@@ -587,7 +614,7 @@ fun StudioScreen() {
                     val ratioH = state.exportConfig.outputHeightPx().toFloat()
                     val slideAspect = (ratioW / ratioH).coerceIn(0.45f, 2.0f)
 
-                    val slideHeightDp = (maxHeight - 8.dp).coerceAtLeast(180.dp)
+                    val slideHeightDp = (maxHeight - 10.dp).coerceAtLeast(180.dp)
                     val singleSlideWidthDp = (slideHeightDp * slideAspect).coerceAtMost(maxWidth)
                     val totalCanvasWidthDp = if (state.mode == StudioMode.CAROUSEL) {
                         singleSlideWidthDp * state.carouselSlides
@@ -627,22 +654,8 @@ fun StudioScreen() {
                                 Box(Modifier.fillMaxSize().background(Color(0x660B0D10)))
                             }
 
-                            if (state.slots.isEmpty()) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clickable {
-                                            picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-                                        },
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(Icons.Default.AddPhotoAlternate, null, tint = AccentGreen, modifier = Modifier.size(36.dp))
-                                    Spacer(Modifier.height(6.dp))
-                                    Text("Tap to Add Photos or Videos", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("Tap Play icon above anytime for Swipe Preview", color = TextSecondary, fontSize = 11.sp)
-                                }
-                            } else if (state.mode == StudioMode.GRID) {
+                            if (state.mode == StudioMode.GRID) {
+                                // Grid Renderer with centered '+' buttons on empty cells (matching SCRL/Collage Maker screenshot)
                                 BoxWithConstraints(
                                     modifier = Modifier.fillMaxSize().padding(state.outerMarginDp.dp)
                                 ) {
@@ -652,16 +665,34 @@ fun StudioScreen() {
                                     val rects = state.layout.slotRects()
                                     rects.forEachIndexed { idx, slotRect ->
                                         val item = state.slots.getOrNull(idx)
-                                        val cellW = (cw * slotRect.width - gap).coerceAtLeast(12.dp)
-                                        val cellH = (ch * slotRect.height - gap).coerceAtLeast(12.dp)
+                                        val cellW = (cw * slotRect.width - gap).coerceAtLeast(16.dp)
+                                        val cellH = (ch * slotRect.height - gap).coerceAtLeast(16.dp)
                                         val offX = cw * slotRect.left + gap / 2
                                         val offY = ch * slotRect.top + gap / 2
+                                        val mask = if (item != null && item.maskShape != TileMaskShape.RECTANGLE) item.maskShape else slotRect.maskShape
+                                        val tileShape = ShapePaths.composeShape(mask, state.cornerRadiusDp.dp)
 
-                                        if (item != null) {
-                                            val isSelected = idx == state.selectedSlotIndex
+                                        if (item == null) {
+                                            // Empty Cell with centered '+' drop target
+                                            Box(
+                                                modifier = Modifier
+                                                    .offset(x = offX, y = offY)
+                                                    .size(width = cellW, height = cellH)
+                                                    .clip(tileShape)
+                                                    .background(BgElevated)
+                                                    .border(1.dp, BorderSubtle, tileShape)
+                                                    .clickable {
+                                                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Surface(shape = CircleShape, color = Color(0xFF2B3240)) {
+                                                    Icon(Icons.Default.Add, "Add Photo", tint = TextPrimary, modifier = Modifier.padding(8.dp).size(20.dp))
+                                                }
+                                            }
+                                        } else {
+                                            val isSelected = idx == state.selectedSlotIndex && state.selectedOverlayId == null
                                             val isSwapSrc = idx == state.swapSourceIndex
-                                            val mask = if (item.maskShape != TileMaskShape.RECTANGLE) item.maskShape else slotRect.maskShape
-                                            val tileShape = ShapePaths.composeShape(mask, state.cornerRadiusDp.dp)
                                             val borderColor = when {
                                                 isSwapSrc -> CyanGuide
                                                 isSelected -> AccentGreen
@@ -704,67 +735,86 @@ fun StudioScreen() {
                                     }
                                 }
                             } else {
-                                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                                    val totalWpx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
-                                    val totalHpx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
-                                    val indexedSorted = state.slots.mapIndexed { i, item -> i to item }.sortedBy { it.second.zIndex }
-
-                                    indexedSorted.forEach { (origIdx, item) ->
-                                        val isSelected = origIdx == state.selectedSlotIndex
-                                        val itemW = maxWidth * item.freeW
-                                        val itemH = maxHeight * item.freeH
-                                        val leftDp = maxWidth * item.freeX - itemW / 2
-                                        val topDp = maxHeight * item.freeY - itemH / 2
-                                        val tileShape = ShapePaths.composeShape(item.maskShape, state.cornerRadiusDp.dp)
-                                        val borderColor = when {
-                                            isSelected -> AccentGreen
-                                            state.borderColorHex != null -> Color(state.borderColorHex!!)
-                                            else -> Color.Transparent
+                                // Freeform / SCRL Carousel Canvas
+                                if (state.slots.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Surface(shape = CircleShape, color = BgElevated) {
+                                                Icon(Icons.Default.Add, null, tint = AccentGreen, modifier = Modifier.padding(12.dp).size(26.dp))
+                                            }
+                                            Text("Tap to add photos to ${state.mode.title}", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                         }
+                                    }
+                                } else {
+                                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                        val totalWpx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
+                                        val totalHpx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
+                                        val indexedSorted = state.slots.mapIndexed { i, item -> i to item }.sortedBy { it.second.zIndex }
 
-                                        Box(
-                                            modifier = Modifier
-                                                .offset(x = leftDp, y = topDp)
-                                                .size(width = itemW, height = itemH)
-                                                .graphicsLayer {
-                                                    rotationZ = item.rotationDeg
-                                                    alpha = item.opacity
-                                                }
-                                                .then(if (item.shadowDp > 0) Modifier.shadow(item.shadowDp.dp, tileShape) else Modifier)
-                                                .clip(tileShape)
-                                                .background(Color(0xFF1C232E))
-                                                .border(if (isSelected || state.borderColorHex != null) 2.dp else 0.dp, borderColor, tileShape)
-                                                .clickable { state = state.copy(selectedSlotIndex = origIdx) }
-                                                .pointerInput(item.id, state.canvasLocked, item.locked) {
-                                                    if (!state.canvasLocked && !item.locked) {
-                                                        detectTransformGestures { _, pan, zoom, rot ->
-                                                            state = state.copy(
-                                                                selectedSlotIndex = origIdx,
-                                                                slots = state.slots.mapIndexed { i, cur ->
-                                                                    if (i == origIdx) {
-                                                                        cur.copy(
-                                                                            freeX = (cur.freeX + pan.x / totalWpx).coerceIn(0.02f, 0.98f),
-                                                                            freeY = (cur.freeY + pan.y / totalHpx).coerceIn(0.02f, 0.98f),
-                                                                            freeW = (cur.freeW * zoom).coerceIn(0.08f, 1.2f),
-                                                                            freeH = (cur.freeH * zoom).coerceIn(0.08f, 1.2f),
-                                                                            rotationDeg = cur.rotationDeg + rot
-                                                                        )
-                                                                    } else cur
-                                                                }
-                                                            )
+                                        indexedSorted.forEach { (origIdx, item) ->
+                                            val isSelected = origIdx == state.selectedSlotIndex && state.selectedOverlayId == null
+                                            val itemW = maxWidth * item.freeW
+                                            val itemH = maxHeight * item.freeH
+                                            val leftDp = maxWidth * item.freeX - itemW / 2
+                                            val topDp = maxHeight * item.freeY - itemH / 2
+                                            val tileShape = ShapePaths.composeShape(item.maskShape, state.cornerRadiusDp.dp)
+                                            val borderColor = when {
+                                                isSelected -> AccentGreen
+                                                state.borderColorHex != null -> Color(state.borderColorHex!!)
+                                                else -> Color.Transparent
+                                            }
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .offset(x = leftDp, y = topDp)
+                                                    .size(width = itemW, height = itemH)
+                                                    .graphicsLayer {
+                                                        rotationZ = item.rotationDeg
+                                                        alpha = item.opacity
+                                                    }
+                                                    .then(if (item.shadowDp > 0) Modifier.shadow(item.shadowDp.dp, tileShape) else Modifier)
+                                                    .clip(tileShape)
+                                                    .background(Color(0xFF1C232E))
+                                                    .border(if (isSelected || state.borderColorHex != null) 2.dp else 0.dp, borderColor, tileShape)
+                                                    .clickable { state = state.copy(selectedSlotIndex = origIdx, selectedOverlayId = null) }
+                                                    .pointerInput(item.id, state.canvasLocked, item.locked) {
+                                                        if (!state.canvasLocked && !item.locked) {
+                                                            detectTransformGestures { _, pan, zoom, rot ->
+                                                                state = state.copy(
+                                                                    selectedSlotIndex = origIdx,
+                                                                    selectedOverlayId = null,
+                                                                    slots = state.slots.mapIndexed { i, cur ->
+                                                                        if (i == origIdx) {
+                                                                            cur.copy(
+                                                                                freeX = (cur.freeX + pan.x / totalWpx).coerceIn(0.02f, 0.98f),
+                                                                                freeY = (cur.freeY + pan.y / totalHpx).coerceIn(0.02f, 0.98f),
+                                                                                freeW = (cur.freeW * zoom).coerceIn(0.08f, 1.2f),
+                                                                                freeH = (cur.freeH * zoom).coerceIn(0.08f, 1.2f),
+                                                                                rotationDeg = cur.rotationDeg + rot
+                                                                            )
+                                                                        } else cur
+                                                                    }
+                                                                )
+                                                            }
                                                         }
                                                     }
+                                            ) {
+                                                MediaTileImage(item = item, modifier = Modifier.fillMaxSize())
+                                                if (item.locked) {
+                                                    Icon(Icons.Default.Lock, null, tint = AccentGreen, modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(14.dp))
                                                 }
-                                        ) {
-                                            MediaTileImage(item = item, modifier = Modifier.fillMaxSize())
-                                            if (item.locked) {
-                                                Icon(Icons.Default.Lock, null, tint = AccentGreen, modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(14.dp))
                                             }
                                         }
                                     }
                                 }
                             }
 
+                            // Canvas Texture Overlay
                             if (state.canvasTexture != CanvasTexture.NONE) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     when (state.canvasTexture) {
@@ -779,32 +829,27 @@ fun StudioScreen() {
                                 }
                             }
 
-                            if (state.showGuides) {
+                            // Guides
+                            if (state.showGuides && state.mode == StudioMode.CAROUSEL && state.carouselSlides > 1) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val dash = PathEffect.dashPathEffect(floatArrayOf(10f, 8f), 0f)
-                                    if (state.mode == StudioMode.CAROUSEL && state.carouselSlides > 1) {
-                                        for (s in 1 until state.carouselSlides) {
-                                            val x = size.width * (s.toFloat() / state.carouselSlides)
-                                            drawLine(CyanGuide.copy(alpha = 0.9f), Offset(x, 0f), Offset(x, size.height), 2.5f, pathEffect = dash)
-                                        }
-                                    } else {
-                                        drawLine(CyanGuide.copy(alpha = 0.35f), Offset(size.width / 2f, 0f), Offset(size.width / 2f, size.height), 1.5f, pathEffect = dash)
-                                        drawLine(CyanGuide.copy(alpha = 0.35f), Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f), 1.5f, pathEffect = dash)
+                                    for (s in 1 until state.carouselSlides) {
+                                        val x = size.width * (s.toFloat() / state.carouselSlides)
+                                        drawLine(CyanGuide.copy(alpha = 0.85f), Offset(x, 0f), Offset(x, size.height), 2.5f, pathEffect = dash)
                                     }
                                 }
-                                if (state.mode == StudioMode.CAROUSEL) {
-                                    Row(modifier = Modifier.fillMaxWidth().align(Alignment.TopStart)) {
-                                        for (s in 1..state.carouselSlides) {
-                                            Box(modifier = Modifier.weight(1f).padding(6.dp)) {
-                                                Surface(color = Color(0xCC0B0D10), shape = RoundedCornerShape(6.dp)) {
-                                                    Text("SLIDE $s", color = CyanGuide, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                                                }
+                                Row(modifier = Modifier.fillMaxWidth().align(Alignment.TopStart)) {
+                                    for (s in 1..state.carouselSlides) {
+                                        Box(modifier = Modifier.weight(1f).padding(6.dp)) {
+                                            Surface(color = Color(0xCC0B0D10), shape = RoundedCornerShape(6.dp)) {
+                                                Text("SLIDE $s", color = CyanGuide, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                                             }
                                         }
                                     }
                                 }
                             }
 
+                            // Text & Sticker Overlays with inline red 'X' delete badge (matching screenshot)
                             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                 val maxW = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
                                 val maxH = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
@@ -814,13 +859,14 @@ fun StudioScreen() {
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
                                             .graphicsLayer {
-                                                translationX = (overlay.xFraction * maxW) - 50f
-                                                translationY = (overlay.yFraction * maxH) - 24f
+                                                translationX = (overlay.xFraction * maxW) - 56f
+                                                translationY = (overlay.yFraction * maxH) - 26f
                                                 rotationZ = overlay.rotationDeg
                                                 alpha = overlay.opacity
                                             }
                                             .clickable {
-                                                state = state.copy(selectedOverlayId = overlay.id, activeTab = if (overlay.isSticker) StudioTab.STICKERS else StudioTab.TEXT)
+                                                state = state.copy(selectedOverlayId = overlay.id, activeTab = if (overlay.isSticker) StudioTab.CREATIVE else StudioTab.TEXT)
+                                                showTrayPanel = true
                                                 if (!overlay.isSticker) textInput = overlay.text
                                             }
                                             .pointerInput(overlay.id, state.canvasLocked) {
@@ -842,42 +888,57 @@ fun StudioScreen() {
                                                 }
                                             }
                                     ) {
-                                        if (overlay.stickerUri != null) {
-                                            AsyncImage(
-                                                model = overlay.stickerUri,
-                                                contentDescription = "Sticker",
-                                                contentScale = ContentScale.Fit,
-                                                modifier = Modifier
-                                                    .size((slideHeightDp * overlay.stickerSizeFraction).coerceIn(48.dp, 180.dp))
-                                                    .border(if (isSel) 1.5.dp else 0.dp, if (isSel) AccentGreen else Color.Transparent, RoundedCornerShape(6.dp))
-                                            )
-                                        } else {
-                                            val ff = when (overlay.fontStyle) {
-                                                TextFontStyle.SANS_BOLD -> FontFamily.SansSerif
-                                                TextFontStyle.SERIF, TextFontStyle.ITALIC -> FontFamily.Serif
-                                                TextFontStyle.MONO -> FontFamily.Monospace
-                                            }
-                                            val fs = if (overlay.fontStyle == TextFontStyle.ITALIC) FontStyle.Italic else FontStyle.Normal
-                                            val ta = when (overlay.alignment) {
-                                                TextAlignOption.LEFT -> TextAlign.Start
-                                                TextAlignOption.CENTER -> TextAlign.Center
-                                                TextAlignOption.RIGHT -> TextAlign.End
-                                            }
-                                            Surface(
-                                                color = if (overlay.usePill) Color(0xCC0B0D10) else Color.Transparent,
-                                                shape = RoundedCornerShape(8.dp),
-                                                border = if (isSel) BorderStroke(1.dp, AccentGreen) else null
-                                            ) {
-                                                Text(
-                                                    text = overlay.text,
-                                                    color = Color(overlay.textColorHex),
-                                                    fontSize = overlay.fontSizeSp.sp,
-                                                    fontFamily = ff,
-                                                    fontStyle = fs,
-                                                    fontWeight = FontWeight.Bold,
-                                                    textAlign = ta,
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        Box(modifier = Modifier.padding(top = 8.dp, end = 8.dp)) {
+                                            if (overlay.stickerUri != null) {
+                                                AsyncImage(
+                                                    model = overlay.stickerUri,
+                                                    contentDescription = "Sticker",
+                                                    contentScale = ContentScale.Fit,
+                                                    modifier = Modifier
+                                                        .size((slideHeightDp * overlay.stickerSizeFraction).coerceIn(48.dp, 180.dp))
+                                                        .border(if (isSel) 1.5.dp else 0.dp, if (isSel) AccentGreen else Color.Transparent, RoundedCornerShape(6.dp))
                                                 )
+                                            } else {
+                                                val ff = when (overlay.fontStyle) {
+                                                    TextFontStyle.SANS_BOLD -> FontFamily.SansSerif
+                                                    TextFontStyle.SERIF, TextFontStyle.ITALIC -> FontFamily.Serif
+                                                    TextFontStyle.MONO -> FontFamily.Monospace
+                                                }
+                                                val fs = if (overlay.fontStyle == TextFontStyle.ITALIC) FontStyle.Italic else FontStyle.Normal
+                                                val ta = when (overlay.alignment) {
+                                                    TextAlignOption.LEFT -> TextAlign.Start
+                                                    TextAlignOption.CENTER -> TextAlign.Center
+                                                    TextAlignOption.RIGHT -> TextAlign.End
+                                                }
+                                                Surface(
+                                                    color = if (overlay.usePill) Color(0xE60B0D10) else Color.Transparent,
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    border = if (isSel) BorderStroke(1.dp, AccentGreen) else null
+                                                ) {
+                                                    Text(
+                                                        text = if (overlay.fontName == "Bebas") overlay.text.uppercase() else overlay.text,
+                                                        color = Color(overlay.textColorHex),
+                                                        fontSize = overlay.fontSizeSp.sp,
+                                                        fontFamily = ff,
+                                                        fontStyle = fs,
+                                                        fontWeight = FontWeight.Bold,
+                                                        textAlign = ta,
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        if (isSel) {
+                                            Surface(
+                                                onClick = {
+                                                    pushState(state.copy(overlays = state.overlays.filterNot { it.id == overlay.id }, selectedOverlayId = null))
+                                                    textInput = ""
+                                                },
+                                                shape = CircleShape,
+                                                color = DangerRed,
+                                                modifier = Modifier.align(Alignment.TopEnd).size(20.dp)
+                                            ) {
+                                                Icon(Icons.Default.Close, "Remove", tint = Color.White, modifier = Modifier.padding(3.dp))
                                             }
                                         }
                                     }
@@ -886,89 +947,169 @@ fun StudioScreen() {
                         }
                     }
 
-                    Surface(
-                        color = BgPanel.copy(alpha = 0.94f),
-                        shape = RoundedCornerShape(20.dp),
-                        border = BorderStroke(1.dp, BorderSubtle),
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    // SCRL Floating Action Pill (Delete / Duplicate / Lock) at top center of viewport when an item is selected
+                    if (selMedia != null || selOverlay != null) {
+                        Surface(
+                            color = BgElevated.copy(alpha = 0.96f),
+                            shape = RoundedCornerShape(22.dp),
+                            border = BorderStroke(1.dp, BorderSubtle),
+                            shadowElevation = 6.dp,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp)
                         ) {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable {
-                                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-                                }
-                            ) {
-                                Icon(Icons.Default.AddPhotoAlternate, null, tint = AccentGreen, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(3.dp))
-                                Text("Add", color = TextPrimary, fontSize = 11.sp)
-                            }
-                            if (state.mode == StudioMode.CAROUSEL) {
-                                Box(Modifier.width(1.dp).height(12.dp).background(BorderSubtle))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable {
-                                        applyLayoutCapacity(state.mode, state.layout, state.carouselSlides + 1)
-                                    }
-                                ) {
-                                    Icon(Icons.Default.Add, null, tint = CyanGuide, modifier = Modifier.size(14.dp))
-                                    Spacer(Modifier.width(2.dp))
-                                    Text("Slide (${state.carouselSlides})", color = TextPrimary, fontSize = 11.sp)
-                                }
-                            }
-                            Box(Modifier.width(1.dp).height(12.dp).background(BorderSubtle))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { state = state.copy(showGuides = !state.showGuides) }
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    if (state.showGuides) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                    null,
-                                    tint = if (state.showGuides) CyanGuide else TextSecondary,
-                                    modifier = Modifier.size(14.dp)
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete",
+                                    tint = DangerRed,
+                                    modifier = Modifier.size(18.dp).clickable {
+                                        if (selOverlay != null) {
+                                            pushState(state.copy(overlays = state.overlays.filterNot { it.id == selOverlay.id }, selectedOverlayId = null))
+                                        } else {
+                                            deleteSelectedMedia()
+                                        }
+                                    }
                                 )
-                                Spacer(Modifier.width(3.dp))
-                                Text("Guides", color = TextPrimary, fontSize = 11.sp)
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Duplicate",
+                                    tint = TextPrimary,
+                                    modifier = Modifier.size(17.dp).clickable {
+                                        if (selOverlay != null) {
+                                            val dup = selOverlay.copy(
+                                                id = UUID.randomUUID().toString(),
+                                                xFraction = (selOverlay.xFraction + 0.05f).coerceAtMost(0.92f),
+                                                yFraction = (selOverlay.yFraction + 0.05f).coerceAtMost(0.92f)
+                                            )
+                                            pushState(state.copy(overlays = state.overlays + dup, selectedOverlayId = dup.id))
+                                        } else {
+                                            duplicateSelectedMedia()
+                                        }
+                                    }
+                                )
+                                Icon(
+                                    imageVector = if (state.canvasLocked || selMedia?.locked == true) Icons.Default.Lock else Icons.Default.LockOpen,
+                                    contentDescription = "Lock",
+                                    tint = if (state.canvasLocked || selMedia?.locked == true) AccentGreen else TextPrimary,
+                                    modifier = Modifier.size(17.dp).clickable {
+                                        if (state.mode != StudioMode.GRID && selMedia != null && selOverlay == null) {
+                                            updateSelectedMedia { it.copy(locked = !it.locked) }
+                                        } else {
+                                            state = state.copy(canvasLocked = !state.canvasLocked)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // SCRL Floating 5-Icon Contextual Bar in Freeform / Carousel mode when tray is collapsed
+                    if (!showTrayPanel && state.mode != StudioMode.GRID && selMedia != null) {
+                        Surface(
+                            color = BgElevated.copy(alpha = 0.96f),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, BorderSubtle),
+                            shadowElevation = 6.dp,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FloatingContextAction(Icons.Default.Palette, "Style") {
+                                    state = state.copy(activeTab = StudioTab.STYLE); showTrayPanel = true
+                                }
+                                FloatingContextAction(Icons.Default.Crop, "Crop") {
+                                    updateSelectedMedia { it.copy(fitInside = !it.fitInside) }
+                                }
+                                FloatingContextAction(Icons.Default.Layers, "Arrange") {
+                                    val maxZ = (state.slots.maxOfOrNull { it.zIndex } ?: 0) + 1
+                                    updateSelectedMedia { it.copy(zIndex = maxZ) }
+                                }
+                                FloatingContextAction(Icons.Default.OpenWith, "Nudge") {
+                                    updateSelectedMedia { it.copy(freeX = (it.freeX + 0.02f).coerceAtMost(0.95f)) }
+                                }
+                                FloatingContextAction(Icons.Default.FitScreen, "Fill") {
+                                    updateSelectedMedia { it.copy(freeW = 0.55f, freeH = 0.65f) }
+                                }
                             }
                         }
                     }
                 }
 
-                // Visible Extras Tray
+                // Extras Strip with "Extras · N", "Clear extras", and individual 'X' badges (matching screenshot)
                 if (state.extras.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().background(BgCanvas).padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BgPanel)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("Extras (${state.extras.size})", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            itemsIndexed(state.extras) { extraIdx, extraItem ->
-                                AsyncImage(
-                                    model = extraItem.uri,
-                                    contentDescription = "Extra photo",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .border(1.dp, BorderSubtle, RoundedCornerShape(6.dp))
-                                        .clickable {
-                                            if (state.slots.isNotEmpty()) {
-                                                val targetIdx = state.selectedSlotIndex.coerceIn(0, state.slots.lastIndex)
-                                                val newSlots = state.slots.toMutableList()
-                                                val newExtras = state.extras.toMutableList()
-                                                val displaced = newSlots[targetIdx]
-                                                newSlots[targetIdx] = extraItem
-                                                newExtras[extraIdx] = displaced
-                                                pushState(state.copy(slots = newSlots, extras = newExtras))
-                                                statusBanner = "Swapped extra into tile #${targetIdx + 1}"
-                                            }
-                                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(color = BgElevated, shape = RoundedCornerShape(12.dp)) {
+                                Text(
+                                    text = "Extras · ${state.extras.size}",
+                                    color = TextPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
+                            }
+                            Text(
+                                text = "Clear extras",
+                                color = AccentGreen,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable {
+                                    pushState(state.copy(extras = emptyList()))
+                                    statusBanner = "Cleared extras"
+                                }
+                            )
+                        }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            itemsIndexed(state.extras) { extraIdx, extraItem ->
+                                Box(modifier = Modifier.size(48.dp)) {
+                                    AsyncImage(
+                                        model = extraItem.uri,
+                                        contentDescription = "Extra",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .align(Alignment.BottomStart)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .border(1.dp, BorderSubtle, RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                if (state.slots.isNotEmpty()) {
+                                                    val targetIdx = state.selectedSlotIndex.coerceIn(0, state.slots.lastIndex)
+                                                    val newSlots = state.slots.toMutableList()
+                                                    val newExtras = state.extras.toMutableList()
+                                                    val displaced = newSlots[targetIdx]
+                                                    newSlots[targetIdx] = extraItem
+                                                    newExtras[extraIdx] = displaced
+                                                    pushState(state.copy(slots = newSlots, extras = newExtras))
+                                                }
+                                            }
+                                    )
+                                    Surface(
+                                        onClick = {
+                                            pushState(state.copy(extras = state.extras.filterIndexed { i, _ -> i != extraIdx }))
+                                        },
+                                        shape = CircleShape,
+                                        color = Color(0xFF2B3240),
+                                        modifier = Modifier.align(Alignment.TopEnd).size(16.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, "Remove extra", tint = TextPrimary, modifier = Modifier.padding(2.dp))
+                                    }
+                                }
                             }
                         }
                     }
@@ -976,490 +1117,547 @@ fun StudioScreen() {
 
                 HorizontalDivider(thickness = 1.dp, color = BorderSubtle)
 
-                // 3. Contextual Tool Sub-Panel
-                Column(
-                    modifier = Modifier.fillMaxWidth().background(BgPanel).padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    when (state.activeTab) {
-                        StudioTab.LAYOUT -> {
-                            if (state.mode == StudioMode.CAROUSEL) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    ScrlTemplate.entries.forEach { tpl ->
-                                        SuggestionChip(
-                                            onClick = { applyScrlTemplate(tpl) },
-                                            label = { Text(tpl.label, fontSize = 11.sp) }
-                                        )
-                                    }
-                                }
-                                StepperRow(
-                                    label = "Carousel Slides",
-                                    valueText = "${state.carouselSlides} slides",
-                                    onMinus = { applyLayoutCapacity(state.mode, state.layout, state.carouselSlides - 1) },
-                                    onPlus = { applyLayoutCapacity(state.mode, state.layout, state.carouselSlides + 1) }
-                                )
-                            } else {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(LayoutStyle.entries) { layout ->
-                                        LayoutThumbnailChip(
-                                            layout = layout,
-                                            selected = state.layout == layout,
-                                            onClick = { applyLayoutCapacity(state.mode, layout, state.carouselSlides) }
-                                        )
-                                    }
-                                }
-                            }
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(AspectRatioOption.entries) { ratio ->
-                                    FilterChip(
-                                        selected = state.exportConfig.aspectRatio == ratio,
-                                        onClick = { pushState(state.copy(exportConfig = state.exportConfig.copy(aspectRatio = ratio))) },
-                                        label = { Text(ratio.label, fontSize = 10.sp) }
-                                    )
-                                }
-                            }
-                            StepperRow(
-                                label = "Outer Margin",
-                                valueText = "${state.outerMarginDp} px",
-                                onMinus = { pushState(state.copy(outerMarginDp = (state.outerMarginDp - 2).coerceAtLeast(0))) },
-                                onPlus = { pushState(state.copy(outerMarginDp = (state.outerMarginDp + 2).coerceAtMost(48))) }
-                            )
-                            StepperRow(
-                                label = "Inner Spacing",
-                                valueText = "${state.borderDp} px",
-                                onMinus = { pushState(state.copy(borderDp = (state.borderDp - 2).coerceAtLeast(0))) },
-                                onPlus = { pushState(state.copy(borderDp = (state.borderDp + 2).coerceAtMost(48))) }
-                            )
-                            StepperRow(
-                                label = "Corner Radius",
-                                valueText = "${state.cornerRadiusDp} px",
-                                onMinus = { pushState(state.copy(cornerRadiusDp = (state.cornerRadiusDp - 2).coerceAtLeast(0))) },
-                                onPlus = { pushState(state.copy(cornerRadiusDp = (state.cornerRadiusDp + 2).coerceAtMost(48))) }
-                            )
-                        }
-
-                        StudioTab.MEDIA -> {
-                            val sel = state.slots.getOrNull(state.selectedSlotIndex)
-                            Row(
-                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                FilledTonalButton(
-                                    onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) { Text("Add", fontSize = 11.sp) }
-                                OutlinedButton(
-                                    onClick = { replacePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
-                                    enabled = sel != null,
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) { Text("Replace", fontSize = 11.sp) }
-                                OutlinedButton(
-                                    onClick = {
-                                        if (sel != null) {
-                                            state = state.copy(swapSourceIndex = if (state.swapSourceIndex == null) state.selectedSlotIndex else null)
-                                        }
-                                    },
-                                    enabled = state.slots.size > 1,
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) { Text("Swap", fontSize = 11.sp) }
-                                OutlinedButton(
-                                    onClick = { updateSelectedMedia { it.copy(fitInside = !it.fitInside) } },
-                                    enabled = sel != null,
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) { Text(if (sel?.fitInside == true) "Fill" else "Fit", fontSize = 11.sp) }
-                                OutlinedButton(
-                                    onClick = { updateSelectedMedia { it.copy(flipHorizontal = !it.flipHorizontal) } },
-                                    enabled = sel != null,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) { Icon(Icons.Default.Flip, null, modifier = Modifier.size(15.dp)) }
-                                OutlinedButton(
-                                    onClick = { updateSelectedMedia { it.copy(rotationDeg = (it.rotationDeg + 90f) % 360f) } },
-                                    enabled = sel != null,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) { Text("90°", fontSize = 11.sp) }
-                                if (state.mode != StudioMode.GRID && sel != null) {
-                                    OutlinedButton(onClick = { duplicateSelectedMedia() }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
-                                        Icon(Icons.Default.ContentCopy, "Duplicate", modifier = Modifier.size(15.dp))
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            val maxZ = (state.slots.maxOfOrNull { it.zIndex } ?: 0) + 1
-                                            updateSelectedMedia { it.copy(zIndex = maxZ) }
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                    ) { Icon(Icons.Default.FlipToFront, "Front", modifier = Modifier.size(15.dp)) }
-                                    OutlinedButton(
-                                        onClick = {
-                                            val minZ = (state.slots.minOfOrNull { it.zIndex } ?: 0) - 1
-                                            updateSelectedMedia { it.copy(zIndex = minZ) }
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                    ) { Icon(Icons.Default.FlipToBack, "Back", modifier = Modifier.size(15.dp)) }
-                                    OutlinedButton(
-                                        onClick = { updateSelectedMedia { it.copy(locked = !it.locked) } },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                    ) { Icon(if (sel.locked) Icons.Default.Lock else Icons.Default.LockOpen, "Lock", modifier = Modifier.size(15.dp)) }
-                                }
-                                OutlinedButton(
-                                    onClick = { deleteSelectedMedia() },
-                                    enabled = sel != null,
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) { Icon(Icons.Default.Delete, "Delete", modifier = Modifier.size(15.dp)) }
-                            }
-
-                            if (sel != null) {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(TileMaskShape.entries) { mask ->
-                                        FilterChip(
-                                            selected = sel.maskShape == mask,
-                                            onClick = { updateSelectedMedia { it.copy(maskShape = mask) } },
-                                            label = { Text(mask.label, fontSize = 10.sp) }
-                                        )
-                                    }
-                                }
-                            }
-
-                            StepperRow(
-                                label = if (state.mode == StudioMode.GRID) "Tile Zoom" else "Drop Shadow",
-                                valueText = if (state.mode == StudioMode.GRID) "${((sel?.scale ?: 1f) * 100).roundToInt()}%" else "${sel?.shadowDp ?: 0} dp",
-                                onMinus = {
-                                    if (state.mode == StudioMode.GRID) {
-                                        updateSelectedMedia { it.copy(scale = (it.scale - 0.1f).coerceAtLeast(0.5f)) }
-                                    } else {
-                                        updateSelectedMedia { it.copy(shadowDp = (it.shadowDp - 2).coerceAtLeast(0)) }
-                                    }
-                                },
-                                onPlus = {
-                                    if (state.mode == StudioMode.GRID) {
-                                        updateSelectedMedia { it.copy(scale = (it.scale + 0.1f).coerceAtMost(4f)) }
-                                    } else {
-                                        updateSelectedMedia { it.copy(shadowDp = (it.shadowDp + 2).coerceAtMost(24)) }
-                                    }
-                                }
-                            )
-                        }
-
-                        StudioTab.BG -> {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(BackgroundStyle.entries) { bg ->
-                                    val selected = state.customBgHex == null && state.backgroundStyle == bg
-                                    val mod = if (bg.startHex != bg.endHex && !bg.isBlurPhoto) {
-                                        Modifier.background(Brush.linearGradient(listOf(Color(bg.startHex), Color(bg.endHex))))
-                                    } else {
-                                        Modifier.background(Color(bg.startHex))
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .then(mod)
-                                            .border(if (selected) 2.dp else 1.dp, if (selected) AccentGreen else BorderSubtle, RoundedCornerShape(10.dp))
-                                            .clickable { pushState(state.copy(backgroundStyle = bg, customBgHex = null)) }
-                                            .padding(horizontal = 10.dp, vertical = 7.dp)
-                                    ) {
-                                        Text(bg.label, color = if (bg == BackgroundStyle.PURE_WHITE) Color(0xFF0B0D10) else TextPrimary, fontSize = 11.sp)
-                                    }
-                                }
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedTextField(
-                                    value = hexInput,
-                                    onValueChange = { hexInput = it },
-                                    placeholder = { Text("#133326", fontSize = 11.sp) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Button(
-                                    onClick = {
-                                        val parsed = parseHexColor(hexInput)
-                                        if (parsed != null) {
-                                            pushState(state.copy(customBgHex = parsed))
-                                            statusBanner = "Applied custom BG $hexInput"
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color(0xFF05130A))
-                                ) { Text("HEX", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CanvasTexture.entries.forEach { tex ->
-                                    FilterChip(
-                                        selected = state.canvasTexture == tex,
-                                        onClick = { pushState(state.copy(canvasTexture = tex)) },
-                                        label = { Text(tex.label, fontSize = 10.sp) }
-                                    )
-                                }
-                                Spacer(Modifier.width(4.dp))
-                                Text("Border:", color = TextSecondary, fontSize = 10.sp)
-                                BorderSwatches.forEach { hex ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(20.dp)
-                                            .clip(CircleShape)
-                                            .background(if (hex != null) Color(hex) else BgCanvas)
-                                            .border(if (state.borderColorHex == hex) 2.dp else 1.dp, if (state.borderColorHex == hex) AccentGreen else BorderSubtle, CircleShape)
-                                            .clickable { pushState(state.copy(borderColorHex = hex)) }
-                                    )
-                                }
-                            }
-                        }
-
-                        StudioTab.TEXT -> {
-                            val selOverlay = state.overlays.find { it.id == state.selectedOverlayId && !it.isSticker }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedTextField(
-                                    value = textInput,
-                                    onValueChange = { textInput = it },
-                                    placeholder = { Text("English or മലയാളം text...", fontSize = 12.sp) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Button(
-                                    onClick = {
-                                        if (textInput.isNotBlank()) {
-                                            if (selOverlay != null) {
-                                                pushState(state.copy(overlays = state.overlays.map {
-                                                    if (it.id == selOverlay.id) it.copy(text = textInput.trim()) else it
-                                                }))
-                                            } else {
-                                                val newOverlay = TextOverlay(id = UUID.randomUUID().toString(), text = textInput.trim())
-                                                pushState(state.copy(overlays = state.overlays + newOverlay, selectedOverlayId = newOverlay.id))
-                                            }
-                                            textInput = ""
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color(0xFF05130A))
-                                ) { Text(if (selOverlay != null) "Update" else "Add", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                            }
-                            if (selOverlay != null) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    TextFontStyle.entries.forEach { style ->
-                                        FilterChip(
-                                            selected = selOverlay.fontStyle == style,
-                                            onClick = {
-                                                pushState(state.copy(overlays = state.overlays.map {
-                                                    if (it.id == selOverlay.id) it.copy(fontStyle = style) else it
-                                                }))
-                                            },
-                                            label = { Text(style.label, fontSize = 10.sp) }
-                                        )
-                                    }
-                                    FilterChip(
-                                        selected = selOverlay.usePill,
-                                        onClick = {
-                                            pushState(state.copy(overlays = state.overlays.map {
-                                                if (it.id == selOverlay.id) it.copy(usePill = !it.usePill) else it
-                                            }))
-                                        },
-                                        label = { Text("Pill", fontSize = 10.sp) }
-                                    )
-                                    IconButton(
-                                        onClick = {
-                                            pushState(state.copy(overlays = state.overlays.filterNot { it.id == selOverlay.id }, selectedOverlayId = null))
-                                            textInput = ""
-                                        },
-                                        modifier = Modifier.size(30.dp)
-                                    ) { Icon(Icons.Default.Delete, "Delete Text", tint = DangerRed, modifier = Modifier.size(18.dp)) }
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    TextSwatches.forEach { hex ->
-                                        Box(
-                                            modifier = Modifier
-                                                .size(22.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(hex))
-                                                .border(if (selOverlay.textColorHex == hex) 2.dp else 1.dp, if (selOverlay.textColorHex == hex) AccentGreen else BorderSubtle, CircleShape)
-                                                .clickable {
-                                                    pushState(state.copy(overlays = state.overlays.map {
-                                                        if (it.id == selOverlay.id) it.copy(textColorHex = hex) else it
-                                                    }))
-                                                }
-                                        )
-                                    }
-                                }
-                                StepperRow(
-                                    label = "Font Size",
-                                    valueText = "${selOverlay.fontSizeSp.roundToInt()} sp",
-                                    onMinus = {
-                                        pushState(state.copy(overlays = state.overlays.map {
-                                            if (it.id == selOverlay.id) it.copy(fontSizeSp = (it.fontSizeSp - 2f).coerceAtLeast(12f)) else it
-                                        }))
-                                    },
-                                    onPlus = {
-                                        pushState(state.copy(overlays = state.overlays.map {
-                                            if (it.id == selOverlay.id) it.copy(fontSizeSp = (it.fontSizeSp + 2f).coerceAtMost(72f)) else it
-                                        }))
-                                    }
-                                )
-                            }
-                        }
-
-                        StudioTab.STICKERS -> {
-                            val selSticker = state.overlays.find { it.id == state.selectedOverlayId && it.isSticker }
-                            Row(
-                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                FilledTonalButton(
-                                    onClick = { stickerImagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Icon(Icons.Default.AddPhotoAlternate, null, modifier = Modifier.size(15.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Import PNG", fontSize = 11.sp)
-                                }
-                                listOf("SWIPE →", "01 / 03", "KERALA", "SHOT ON MOBILE", "✦", "★", "📷", "🎬", "🔥").forEach { badge ->
-                                    SuggestionChip(
-                                        onClick = {
-                                            val item = TextOverlay(id = UUID.randomUUID().toString(), text = badge, fontSizeSp = 16f, usePill = badge.length > 2, isSticker = true)
-                                            pushState(state.copy(overlays = state.overlays + item, selectedOverlayId = item.id))
-                                        },
-                                        label = { Text(badge, fontSize = 11.sp) }
-                                    )
-                                }
-                            }
-                            if (selSticker != null) {
+                // 3. Collapsible Contextual Tool Panel
+                if (showTrayPanel) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BgPanel)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        when (state.activeTab) {
+                            StudioTab.LAYOUT -> {
+                                // Header with 'X' close button
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Opacity: ${(selSticker.opacity * 100).roundToInt()}%", color = TextSecondary, fontSize = 11.sp)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                pushState(state.copy(overlays = state.overlays.map {
-                                                    if (it.id == selSticker.id) it.copy(opacity = (it.opacity - 0.15f).coerceAtLeast(0.2f)) else it
-                                                }))
-                                            },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                        ) { Text("-", fontSize = 12.sp) }
-                                        OutlinedButton(
-                                            onClick = {
-                                                pushState(state.copy(overlays = state.overlays.map {
-                                                    if (it.id == selSticker.id) it.copy(opacity = (it.opacity + 0.15f).coerceAtMost(1f)) else it
-                                                }))
-                                            },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                        ) { Text("+", fontSize = 12.sp) }
-                                        IconButton(
-                                            onClick = {
-                                                pushState(state.copy(overlays = state.overlays.filterNot { it.id == selSticker.id }, selectedOverlayId = null))
-                                            },
-                                            modifier = Modifier.size(30.dp)
-                                        ) { Icon(Icons.Default.Delete, "Delete Sticker", tint = DangerRed, modifier = Modifier.size(18.dp)) }
+                                    Text("Layouts", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    IconButton(onClick = { showTrayPanel = false }, modifier = Modifier.size(26.dp)) {
+                                        Icon(Icons.Default.Close, "Close", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+
+                                // Search layouts...
+                                OutlinedTextField(
+                                    value = layoutSearchQuery,
+                                    onValueChange = { layoutSearchQuery = it },
+                                    placeholder = { Text("Search layouts...", fontSize = 12.sp, color = TextSecondary) },
+                                    leadingIcon = { Icon(Icons.Default.Search, null, tint = TextSecondary, modifier = Modifier.size(17.dp)) },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                )
+
+                                // Photo Count Filter Chips: All, 1, 2, 3, 4, 5, 6, 7+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = layoutCountFilter == null,
+                                        onClick = { layoutCountFilter = null },
+                                        label = { Text("All", fontSize = 11.sp) }
+                                    )
+                                    listOf(1, 2, 3, 4, 5, 6, 9).forEach { cnt ->
+                                        FilterChip(
+                                            selected = layoutCountFilter == cnt,
+                                            onClick = { layoutCountFilter = if (layoutCountFilter == cnt) null else cnt },
+                                            label = { Text(if (cnt == 9) "7+" else "$cnt", fontSize = 11.sp) }
+                                        )
+                                    }
+                                }
+
+                                // Filtered Visual Wireframe Row
+                                val filtered = LayoutStyle.entries.filter { layout ->
+                                    val matchQuery = layoutSearchQuery.isBlank() ||
+                                        layout.label.contains(layoutSearchQuery, ignoreCase = true) ||
+                                        layout.category.contains(layoutSearchQuery, ignoreCase = true)
+                                    val matchCount = layoutCountFilter == null || layout.slotCount == layoutCountFilter
+                                    matchQuery && matchCount
+                                }
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(filtered) { layout ->
+                                        LayoutThumbnailChip(
+                                            layout = layout,
+                                            selected = state.mode == StudioMode.GRID && state.layout == layout,
+                                            onClick = { applyLayoutCapacity(StudioMode.GRID, layout, state.carouselSlides) }
+                                        )
                                     }
                                 }
                             }
-                        }
 
-                        StudioTab.FILTERS -> {
-                            val sel = state.slots.getOrNull(state.selectedSlotIndex)
-                            Row(
-                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                FilterPreset.entries.forEach { preset ->
-                                    FilterChip(
-                                        selected = sel != null && sel.brightness == preset.brightness && sel.contrast == preset.contrast && sel.saturation == preset.saturation,
-                                        onClick = {
-                                            updateSelectedMedia {
-                                                it.copy(
-                                                    brightness = preset.brightness,
-                                                    contrast = preset.contrast,
-                                                    saturation = preset.saturation,
-                                                    warmth = preset.warmth,
-                                                    vignette = preset.vignette
+                            StudioTab.CONTROLS -> {
+                                // Segmented "All photos | This photo" Switcher (matching screenshot)
+                                Surface(
+                                    color = BgCanvas,
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, BorderSubtle),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(modifier = Modifier.padding(3.dp)) {
+                                        Surface(
+                                            onClick = { controlsScopeAll = true },
+                                            color = if (controlsScopeAll) BgElevated else Color.Transparent,
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                "All photos",
+                                                color = if (controlsScopeAll) TextPrimary else TextSecondary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(vertical = 6.dp)
+                                            )
+                                        }
+                                        Surface(
+                                            onClick = { controlsScopeAll = false },
+                                            color = if (!controlsScopeAll) BgElevated else Color.Transparent,
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                "This photo",
+                                                color = if (!controlsScopeAll) TextPrimary else TextSecondary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(vertical = 6.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (controlsScopeAll) {
+                                    // Border Presets: None, Thin, Classic, Wide
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf(
+                                            Triple("None", 0, 0),
+                                            Triple("Thin", 4, 6),
+                                            Triple("Classic", 10, 12),
+                                            Triple("Wide", 20, 18)
+                                        ).forEach { (label, gap, rad) ->
+                                            val active = state.borderDp == gap && state.cornerRadiusDp == rad
+                                            Surface(
+                                                onClick = { pushState(state.copy(borderDp = gap, outerMarginDp = gap, cornerRadiusDp = rad)) },
+                                                shape = RoundedCornerShape(18.dp),
+                                                color = if (active) Color(0xFF1A2E22) else BgCanvas,
+                                                border = BorderStroke(1.dp, if (active) AccentGreen else BorderSubtle),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(
+                                                    label,
+                                                    color = if (active) AccentGreen else TextPrimary,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    textAlign = TextAlign.Center,
+                                                    modifier = Modifier.padding(vertical = 6.dp)
                                                 )
                                             }
-                                        },
-                                        label = { Text(preset.label, fontSize = 11.sp) }
+                                        }
+                                    }
+
+                                    // Spacing Slider + Value
+                                    SliderWithValue(
+                                        label = "Spacing",
+                                        value = state.borderDp.toFloat(),
+                                        range = 0f..36f,
+                                        valueText = "${state.borderDp}",
+                                        onValueChange = { state = state.copy(borderDp = it.roundToInt(), outerMarginDp = it.roundToInt()) }
+                                    )
+                                    // Corner Radius Slider + Value
+                                    SliderWithValue(
+                                        label = "Corner radius",
+                                        value = state.cornerRadiusDp.toFloat(),
+                                        range = 0f..40f,
+                                        valueText = "${state.cornerRadiusDp}",
+                                        onValueChange = { state = state.copy(cornerRadiusDp = it.roundToInt()) }
+                                    )
+                                } else {
+                                    // "This photo" controls
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        FilledTonalButton(
+                                            onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) { Text("Add", fontSize = 11.sp) }
+                                        OutlinedButton(
+                                            onClick = { replacePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+                                            enabled = selMedia != null,
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) { Text("Replace", fontSize = 11.sp) }
+                                        OutlinedButton(
+                                            onClick = {
+                                                if (selMedia != null) {
+                                                    state = state.copy(swapSourceIndex = if (state.swapSourceIndex == null) state.selectedSlotIndex else null)
+                                                }
+                                            },
+                                            enabled = state.slots.size > 1,
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) { Text("Swap", fontSize = 11.sp) }
+                                        OutlinedButton(
+                                            onClick = { updateSelectedMedia { it.copy(fitInside = !it.fitInside) } },
+                                            enabled = selMedia != null,
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) { Text(if (selMedia?.fitInside == true) "Fill" else "Fit Whole", fontSize = 11.sp) }
+                                        OutlinedButton(
+                                            onClick = { updateSelectedMedia { it.copy(flipHorizontal = !it.flipHorizontal) } },
+                                            enabled = selMedia != null,
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                        ) { Icon(Icons.Default.Flip, null, modifier = Modifier.size(15.dp)) }
+                                        OutlinedButton(
+                                            onClick = { updateSelectedMedia { it.copy(rotationDeg = (it.rotationDeg + 90f) % 360f) } },
+                                            enabled = selMedia != null,
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                        ) { Text("90°", fontSize = 11.sp) }
+                                    }
+                                    SliderWithValue(
+                                        label = "Zoom",
+                                        value = selMedia?.scale ?: 1f,
+                                        range = 0.5f..3.5f,
+                                        valueText = "${((selMedia?.scale ?: 1f) * 100).roundToInt()}%",
+                                        onValueChange = { z -> updateSelectedMedia(recordHistory = false) { it.copy(scale = z) } }
                                     )
                                 }
-                                if (sel != null && state.slots.size > 1) {
-                                    FilledTonalButton(
-                                        onClick = {
-                                            pushState(state.copy(slots = state.slots.map {
-                                                it.copy(brightness = sel.brightness, contrast = sel.contrast, saturation = sel.saturation, warmth = sel.warmth, vignette = sel.vignette)
-                                            }))
-                                            statusBanner = "Applied filter to all ${state.slots.size} photos"
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                    ) { Text("Apply All", fontSize = 11.sp) }
+                            }
+
+                            StudioTab.STYLE -> {
+                                // Filters + Apply All
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    FilterPreset.entries.forEach { preset ->
+                                        FilterChip(
+                                            selected = selMedia != null && selMedia.brightness == preset.brightness && selMedia.contrast == preset.contrast && selMedia.saturation == preset.saturation,
+                                            onClick = {
+                                                updateSelectedMedia {
+                                                    it.copy(
+                                                        brightness = preset.brightness,
+                                                        contrast = preset.contrast,
+                                                        saturation = preset.saturation,
+                                                        warmth = preset.warmth,
+                                                        vignette = preset.vignette
+                                                    )
+                                                }
+                                            },
+                                            label = { Text(preset.label, fontSize = 11.sp) }
+                                        )
+                                    }
+                                    if (selMedia != null && state.slots.size > 1) {
+                                        FilledTonalButton(
+                                            onClick = {
+                                                pushState(state.copy(slots = state.slots.map {
+                                                    it.copy(brightness = selMedia.brightness, contrast = selMedia.contrast, saturation = selMedia.saturation, warmth = selMedia.warmth, vignette = selMedia.vignette)
+                                                }))
+                                                statusBanner = "Applied style to all photos"
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) { Text("Apply All", fontSize = 11.sp) }
+                                    }
+                                }
+
+                                // Backgrounds
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(BackgroundStyle.entries) { bg ->
+                                        val selected = state.customBgHex == null && state.backgroundStyle == bg
+                                        val mod = if (bg.startHex != bg.endHex && !bg.isBlurPhoto) {
+                                            Modifier.background(Brush.linearGradient(listOf(Color(bg.startHex), Color(bg.endHex))))
+                                        } else {
+                                            Modifier.background(Color(bg.startHex))
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .then(mod)
+                                                .border(if (selected) 2.dp else 1.dp, if (selected) AccentGreen else BorderSubtle, RoundedCornerShape(10.dp))
+                                                .clickable { pushState(state.copy(backgroundStyle = bg, customBgHex = null)) }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(bg.label, color = if (bg == BackgroundStyle.PURE_WHITE) Color(0xFF0B0D10) else TextPrimary, fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+
+                                // Textures & Border Color Swatches
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CanvasTexture.entries.forEach { tex ->
+                                        FilterChip(
+                                            selected = state.canvasTexture == tex,
+                                            onClick = { pushState(state.copy(canvasTexture = tex)) },
+                                            label = { Text(tex.label, fontSize = 10.sp) }
+                                        )
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    BorderSwatches.forEach { hex ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clip(CircleShape)
+                                                .background(if (hex != null) Color(hex) else BgCanvas)
+                                                .border(if (state.borderColorHex == hex) 2.dp else 1.dp, if (state.borderColorHex == hex) AccentGreen else BorderSubtle, CircleShape)
+                                                .clickable { pushState(state.copy(borderColorHex = hex)) }
+                                        )
+                                    }
                                 }
                             }
-                            StepperRow(
-                                label = "Brightness",
-                                valueText = "${((sel?.brightness ?: 0f) * 100).roundToInt()}",
-                                onMinus = { updateSelectedMedia { it.copy(brightness = (it.brightness - 0.05f).coerceAtLeast(-0.5f)) } },
-                                onPlus = { updateSelectedMedia { it.copy(brightness = (it.brightness + 0.05f).coerceAtMost(0.5f)) } }
-                            )
-                            StepperRow(
-                                label = "Contrast",
-                                valueText = "${((sel?.contrast ?: 1f) * 100).roundToInt()}%",
-                                onMinus = { updateSelectedMedia { it.copy(contrast = (it.contrast - 0.1f).coerceAtLeast(0.5f)) } },
-                                onPlus = { updateSelectedMedia { it.copy(contrast = (it.contrast + 0.1f).coerceAtMost(2.0f)) } }
-                            )
-                            StepperRow(
-                                label = "Warmth",
-                                valueText = "${((sel?.warmth ?: 0f) * 100).roundToInt()}",
-                                onMinus = { updateSelectedMedia { it.copy(warmth = (it.warmth - 0.1f).coerceAtLeast(-0.8f)) } },
-                                onPlus = { updateSelectedMedia { it.copy(warmth = (it.warmth + 0.1f).coerceAtMost(0.8f)) } }
-                            )
-                            StepperRow(
-                                label = "Vignette",
-                                valueText = "${((sel?.vignette ?: 0f) * 100).roundToInt()}%",
-                                onMinus = { updateSelectedMedia { it.copy(vignette = (it.vignette - 0.1f).coerceAtLeast(0f)) } },
-                                onPlus = { updateSelectedMedia { it.copy(vignette = (it.vignette + 0.1f).coerceAtMost(0.8f)) } }
-                            )
+
+                            StudioTab.TEXT -> {
+                                val selText = state.overlays.find { it.id == state.selectedOverlayId && !it.isSticker }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = textInput,
+                                        onValueChange = { textInput = it },
+                                        placeholder = { Text("Add caption (English / മലയാളം)...", fontSize = 12.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (textInput.isNotBlank()) {
+                                                if (selText != null) {
+                                                    pushState(state.copy(overlays = state.overlays.map {
+                                                        if (it.id == selText.id) it.copy(text = textInput.trim()) else it
+                                                    }))
+                                                } else {
+                                                    val newOv = TextOverlay(id = UUID.randomUUID().toString(), text = textInput.trim())
+                                                    pushState(state.copy(overlays = state.overlays + newOv, selectedOverlayId = newOv.id))
+                                                }
+                                                textInput = ""
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = Color(0xFF05130A))
+                                    ) { Text(if (selText != null) "Update" else "Add", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                }
+
+                                // Horizontal Font Pills (Roboto, Open Sans, Lato, Montserrat, Authentic, Archive, Bebas, Calligraphy)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(FontCatalog) { fontItem ->
+                                        val selected = selText?.fontName == fontItem.name
+                                        Surface(
+                                            onClick = {
+                                                if (selText != null) {
+                                                    pushState(state.copy(overlays = state.overlays.map {
+                                                        if (it.id == selText.id) it.copy(fontName = fontItem.name, fontStyle = fontItem.style) else it
+                                                    }))
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(18.dp),
+                                            color = if (selected) Color(0xFF1A2E22) else BgCanvas,
+                                            border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
+                                        ) {
+                                            Text(
+                                                text = fontItem.name,
+                                                color = if (selected) AccentGreen else TextPrimary,
+                                                fontSize = 12.sp,
+                                                fontFamily = when (fontItem.style) {
+                                                    TextFontStyle.SERIF, TextFontStyle.ITALIC -> FontFamily.Serif
+                                                    TextFontStyle.MONO -> FontFamily.Monospace
+                                                    else -> FontFamily.SansSerif
+                                                },
+                                                fontStyle = if (fontItem.style == TextFontStyle.ITALIC) FontStyle.Italic else FontStyle.Normal,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // "From your photos" Dynamic Color Swatches
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text("From your photos", color = TextSecondary, fontSize = 10.sp)
+                                    photoPalette.forEach { hex ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(hex))
+                                                .border(
+                                                    width = if (selText?.textColorHex == hex) 2.dp else 1.dp,
+                                                    color = if (selText?.textColorHex == hex) AccentGreen else BorderSubtle,
+                                                    shape = CircleShape
+                                                )
+                                                .clickable {
+                                                    if (selText != null) {
+                                                        pushState(state.copy(overlays = state.overlays.map {
+                                                            if (it.id == selText.id) it.copy(textColorHex = hex) else it
+                                                        }))
+                                                    }
+                                                }
+                                        )
+                                    }
+                                }
+
+                                // Opacity & Size Sliders
+                                if (selText != null) {
+                                    SliderWithValue(
+                                        label = "Opacity",
+                                        value = selText.opacity,
+                                        range = 0.2f..1f,
+                                        valueText = "${(selText.opacity * 100).roundToInt()}%",
+                                        onValueChange = { op ->
+                                            state = state.copy(overlays = state.overlays.map {
+                                                if (it.id == selText.id) it.copy(opacity = op) else it
+                                            })
+                                        }
+                                    )
+                                    SliderWithValue(
+                                        label = "Size",
+                                        value = selText.fontSizeSp,
+                                        range = 12f..64f,
+                                        valueText = "${selText.fontSizeSp.roundToInt()}",
+                                        onValueChange = { sz ->
+                                            state = state.copy(overlays = state.overlays.map {
+                                                if (it.id == selText.id) it.copy(fontSizeSp = sz) else it
+                                            })
+                                        }
+                                    )
+                                }
+                            }
+
+                            StudioTab.CREATIVE -> {
+                                // Stickers + PNG Import + Shape Masks
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    FilledTonalButton(
+                                        onClick = { stickerImagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(Icons.Default.AddPhotoAlternate, null, modifier = Modifier.size(15.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Import PNG", fontSize = 11.sp)
+                                    }
+                                    listOf("SWIPE →", "01 / 03", "KERALA", "SHOT ON MOBILE", "✦", "★", "📷", "🔥").forEach { badge ->
+                                        SuggestionChip(
+                                            onClick = {
+                                                val item = TextOverlay(id = UUID.randomUUID().toString(), text = badge, fontSizeSp = 16f, usePill = badge.length > 2, isSticker = true)
+                                                pushState(state.copy(overlays = state.overlays + item, selectedOverlayId = item.id))
+                                            },
+                                            label = { Text(badge, fontSize = 11.sp) }
+                                        )
+                                    }
+                                }
+                                if (selMedia != null) {
+                                    Text("Photo Shape Mask", color = TextSecondary, fontSize = 11.sp)
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(TileMaskShape.entries) { mask ->
+                                            FilterChip(
+                                                selected = selMedia.maskShape == mask,
+                                                onClick = { updateSelectedMedia { it.copy(maskShape = mask) } },
+                                                label = { Text(mask.label, fontSize = 10.sp) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            StudioTab.FREESTYLE -> {
+                                // Switch between Grid, SCRL Carousel, and Freeform + SCRL Editorial Templates
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    StudioMode.entries.forEach { mode ->
+                                        val selected = state.mode == mode
+                                        Surface(
+                                            onClick = { applyLayoutCapacity(mode, state.layout, state.carouselSlides) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (selected) Color(0xFF1A2E22) else BgCanvas,
+                                            border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                mode.title,
+                                                color = if (selected) AccentGreen else TextPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(vertical = 7.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                if (state.mode == StudioMode.CAROUSEL) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        ScrlTemplate.entries.forEach { tpl ->
+                                            SuggestionChip(onClick = { applyScrlTemplate(tpl) }, label = { Text(tpl.label, fontSize = 11.sp) })
+                                        }
+                                    }
+                                    StepperRow(
+                                        label = "Carousel Slides",
+                                        valueText = "${state.carouselSlides} slides",
+                                        onMinus = { applyLayoutCapacity(state.mode, state.layout, state.carouselSlides - 1) },
+                                        onPlus = { applyLayoutCapacity(state.mode, state.layout, state.carouselSlides + 1) }
+                                    )
+                                } else {
+                                    SliderWithValue(
+                                        label = "Drop Shadow",
+                                        value = (selMedia?.shadowDp ?: 10).toFloat(),
+                                        range = 0f..24f,
+                                        valueText = "${selMedia?.shadowDp ?: 10} dp",
+                                        onValueChange = { sh -> updateSelectedMedia(recordHistory = false) { it.copy(shadowDp = sh.roundToInt()) } }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
 
                 HorizontalDivider(thickness = 1.dp, color = BorderSubtle)
 
-                // 4. Bottom Tool Dock
+                // 4. Reference-Style 6-Tab Bottom Dock (Layout, Controls, Style, Text, Creative, Freestyle)
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(56.dp).background(BgPanel).padding(horizontal = 4.dp),
+                    modifier = Modifier.fillMaxWidth().height(58.dp).background(BgPanel).padding(horizontal = 4.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     StudioTab.entries.forEach { tab ->
-                        val selected = state.activeTab == tab
+                        val selected = state.activeTab == tab && showTrayPanel
                         val icon: ImageVector = when (tab) {
                             StudioTab.LAYOUT -> Icons.Default.GridView
-                            StudioTab.MEDIA -> Icons.Default.PhotoLibrary
-                            StudioTab.BG -> Icons.Default.Palette
+                            StudioTab.CONTROLS -> Icons.Default.Tune
+                            StudioTab.STYLE -> Icons.Default.Style
                             StudioTab.TEXT -> Icons.Default.Title
-                            StudioTab.STICKERS -> Icons.Default.AutoAwesome
-                            StudioTab.FILTERS -> Icons.Default.Tune
+                            StudioTab.CREATIVE -> Icons.Default.Palette
+                            StudioTab.FREESTYLE -> Icons.Default.DashboardCustomize
                         }
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { state = state.copy(activeTab = tab) }
-                                .padding(vertical = 5.dp),
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) Color(0xFF1A2E22) else Color.Transparent)
+                                .clickable {
+                                    if (state.activeTab == tab) {
+                                        showTrayPanel = !showTrayPanel
+                                    } else {
+                                        state = state.copy(activeTab = tab)
+                                        showTrayPanel = true
+                                    }
+                                }
+                                .padding(vertical = 6.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
@@ -1472,7 +1670,6 @@ fun StudioScreen() {
         }
     }
 
-    // Shared Async Export Sheet (accessible from both Editor and Swipe Preview)
     if (showExportSheet) {
         ModalBottomSheet(
             onDismissRequest = { if (!isExporting) showExportSheet = false },
@@ -1522,25 +1719,64 @@ fun StudioScreen() {
 }
 
 @Composable
+private fun FloatingContextAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier.clickable { onClick() },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Icon(icon, label, tint = TextPrimary, modifier = Modifier.size(18.dp))
+        Text(label, color = TextSecondary, fontSize = 9.sp)
+    }
+}
+
+@Composable
+private fun SliderWithValue(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    valueText: String,
+    onValueChange: (Float) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, color = TextSecondary, fontSize = 11.sp)
+            Text(valueText, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Slider(
+            value = value.coerceIn(range.start, range.endInclusive),
+            onValueChange = onValueChange,
+            valueRange = range,
+            colors = SliderDefaults.colors(
+                thumbColor = TextPrimary,
+                activeTrackColor = AccentGreen,
+                inactiveTrackColor = BorderSubtle
+            ),
+            modifier = Modifier.height(28.dp)
+        )
+    }
+}
+
+@Composable
 private fun LayoutThumbnailChip(layout: LayoutStyle, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(10.dp),
         color = if (selected) Color(0xFF1A2E22) else BgCanvas,
         border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Canvas(modifier = Modifier.size(28.dp)) {
+            Canvas(modifier = Modifier.size(30.dp)) {
                 layout.slotRects().forEach { r ->
                     drawRect(
                         color = if (selected) AccentGreen else TextSecondary,
                         topLeft = Offset(r.left * size.width + 1f, r.top * size.height + 1f),
                         size = Size((r.width * size.width - 2f).coerceAtLeast(2f), (r.height * size.height - 2f).coerceAtLeast(2f)),
-                        style = Stroke(width = 1.4f)
+                        style = Stroke(width = 1.5f)
                     )
                 }
             }
@@ -1675,7 +1911,7 @@ private fun ExportOptionsSheetContent(
         Text("Aspect Ratio & Print Sizes", color = TextSecondary, fontSize = 12.sp)
         Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             AspectRatioOption.entries.forEach { ratio ->
-                FilterChip(selected = cfg.aspectRatio == ratio, onClick = { onConfigChange(cfg.copy(aspectRatio = ratio)) }, label = { Text(ratio.label, fontSize = 11.sp) })
+                FilterChip(selected = cfg.aspectRatio == ratio, onClick = { onConfigChange(cfg.copy(aspectRatio = ratio)) }, label = { Text(ratio.shortLabel, fontSize = 11.sp) })
             }
         }
 
@@ -1774,13 +2010,27 @@ private fun ExportOptionsSheetContent(
     }
 }
 
-private fun parseHexColor(raw: String): Long? {
-    val clean = raw.trim().removePrefix("#")
-    return when (clean.length) {
-        6 -> clean.toLongOrNull(16)?.or(0xFF000000L)
-        8 -> clean.toLongOrNull(16)
-        else -> null
+private fun samplePhotoPalette(context: Context, uris: List<Uri>): List<Long> {
+    val result = mutableListOf(0xFFF3F4F6L)
+    uris.forEach { uri ->
+        runCatching {
+            val opts = BitmapFactory.Options().apply { inSampleSize = 16 }
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val bmp = BitmapFactory.decodeStream(stream, null, opts) ?: return@use
+                val cx = bmp.width / 2
+                val cy = bmp.height / 2
+                val points = listOf(cx to cy, bmp.width / 4 to bmp.height / 4, (bmp.width * 3) / 4 to (bmp.height * 3) / 4)
+                points.forEach { (x, y) ->
+                    if (x in 0 until bmp.width && y in 0 until bmp.height && result.size < 6) {
+                        val px = bmp.getPixel(x, y).toLong() and 0xFFFFFFFFL
+                        if (result.none { it == px }) result.add(px)
+                    }
+                }
+                bmp.recycle()
+            }
+        }
     }
+    return if (result.size >= 3) result.take(6) else DefaultPhotoPalette
 }
 
 private fun composeColorMatrix(item: MediaItem): ColorMatrix {
