@@ -315,9 +315,13 @@ enum class LayoutStyle(val label: String, val slotCount: Int, val category: Stri
     private fun generatedSlotRects(): List<SlotRect> {
         val n = slotCount.coerceAtLeast(1)
         if (n == 1) return listOf(SlotRect(0f, 0f, 1f, 1f))
-        val seed = variant / 6
-        val family = variant % 6
+        // Generated variants are numbered from 1. Keep the family index aligned
+        // with the visible name sequence: Grid, Strip, Hero Left, Hero Top, Bento, Masonry.
+        val normalizedVariant = (variant - 1).coerceAtLeast(0)
+        val seed = normalizedVariant / 6
+        val family = normalizedVariant % 6
         fun grid(count: Int, left: Float, top: Float, width: Float, height: Float, columns: Int): List<SlotRect> {
+            if (count <= 0) return emptyList()
             val rows = (count + columns - 1) / columns
             return (0 until count).map { index ->
                 val row = index / columns
@@ -329,8 +333,20 @@ enum class LayoutStyle(val label: String, val slotCount: Int, val category: Stri
         return when (family) {
             0 -> { val cols = when { n <= 2 -> 2; n <= 6 -> 3; else -> 4 }; grid(n, 0f, 0f, 1f, 1f, cols) }
             1 -> { val weights = (0 until n).map { 0.82f + (((it + seed) % 4) * 0.12f) }; val total = weights.sum(); var x = 0f; weights.map { w -> val width = w / total; SlotRect(x, 0f, width, 1f).also { x += width } } }
-            2, 4 -> { val hero = (0.54f + (seed % 5) * 0.025f).coerceAtMost(0.66f); listOf(SlotRect(0f, 0f, hero, 1f)) + (1 until n).map { i -> val h = 1f / (n - 1); SlotRect(hero, (i - 1) * h, 1f - hero, h) } }
+            2 -> { val hero = (0.54f + (seed % 5) * 0.025f).coerceAtMost(0.66f); listOf(SlotRect(0f, 0f, hero, 1f)) + (1 until n).map { i -> val h = 1f / (n - 1); SlotRect(hero, (i - 1) * h, 1f - hero, h) } }
             3 -> { val hero = (0.54f + (seed % 4) * 0.025f).coerceAtMost(0.66f); listOf(SlotRect(0f, 0f, 1f, hero)) + grid(n - 1, 0f, hero, 1f, 1f - hero, minOf(4, n - 1)) }
+            4 -> {
+                // Bento: a dominant feature tile with a distinct right rail and lower row.
+                if (n == 2) listOf(SlotRect(0f, 0f, 0.62f, 1f), SlotRect(0.62f, 0f, 0.38f, 1f))
+                else if (n == 3) listOf(SlotRect(0f, 0f, 0.62f, 1f), SlotRect(0.62f, 0f, 0.38f, 0.5f), SlotRect(0.62f, 0.5f, 0.38f, 0.5f))
+                else {
+                    val heroW = 0.62f + (seed % 3) * 0.02f
+                    val railW = 1f - heroW
+                    val heroH = 0.62f
+                    listOf(SlotRect(0f, 0f, heroW, heroH), SlotRect(heroW, 0f, railW, heroH)) +
+                        grid(n - 2, 0f, heroH, 1f, 1f - heroH, minOf(4, n - 2))
+                }
+            }
             else -> { val cols = if (n < 5) 2 else 3; val colWidth = 1f / cols; (0 until n).groupBy { it % cols }.toSortedMap().flatMap { (col, indices) -> val weights = indices.mapIndexed { j, _ -> 0.82f + (((j + seed + col) % 4) * 0.12f) }; val total = weights.sum(); var y = 0f; indices.mapIndexed { j, _ -> val h = weights[j] / total; SlotRect(col * colWidth, y, colWidth, h).also { y += h } } } }
         }
     }
