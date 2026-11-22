@@ -67,15 +67,15 @@ import kotlin.math.roundToInt
 
 private enum class AppScreen { HOME, EDITOR, PREVIEW }
 
-private val BgCanvas = Color(0xFF0B0D10)
-private val BgPanel = Color(0xFF14171D)
-private val BgElevated = Color(0xFF1B2029)
-private val BorderSubtle = Color(0xFF242933)
-private val AccentGreen = Color(0xFF22C55E)
+private val BgCanvas = Color(0xFF090B0F)
+private val BgPanel = Color(0xFF11151C)
+private val BgElevated = Color(0xFF1B222C)
+private val BorderSubtle = Color(0xFF2A3440)
+private val AccentGreen = Color(0xFF69E58B)
 private val CyanGuide = Color(0xFF38BDF8)
 private val DangerRed = Color(0xFFEF4444)
-private val TextPrimary = Color(0xFFF3F4F6)
-private val TextSecondary = Color(0xFF9CA3AF)
+private val TextPrimary = Color(0xFFF4F7F5)
+private val TextSecondary = Color(0xFFA5B0BC)
 
 private val DefaultPhotoPalette = listOf(
     0xFFF3F4F6L,
@@ -505,9 +505,9 @@ fun StudioScreen() {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(60.dp)
                         .background(BgPanel)
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -528,8 +528,8 @@ fun StudioScreen() {
                     Box {
                         Surface(
                             onClick = { showRatioMenu = true },
-                            shape = RoundedCornerShape(16.dp),
-                            color = BgElevated,
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF202833),
                             border = BorderStroke(1.dp, BorderSubtle)
                         ) {
                             Row(
@@ -625,7 +625,11 @@ fun StudioScreen() {
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color(0xFF0D1117))
+                        .border(1.dp, Color(0xFF202A35), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     val density = LocalDensity.current
@@ -659,9 +663,10 @@ fun StudioScreen() {
                             modifier = Modifier
                                 .width(totalCanvasWidthDp)
                                 .height(slideHeightDp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .then(bgModifier)
-                                .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
+                                .shadow(18.dp, RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0xFF394653), RoundedCornerShape(16.dp))
                         ) {
                             if (state.customBgHex == null && bg.isBlurPhoto && state.slots.isNotEmpty()) {
                                 AsyncImage(
@@ -1141,11 +1146,11 @@ fun StudioScreen() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 276.dp)
+                            .heightIn(max = 310.dp)
                             .verticalScroll(rememberScrollState())
-                            .background(BgPanel)
-                            .padding(horizontal = 14.dp, vertical = 9.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                            .background(Color(0xFF121821))
+                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(13.dp)
                     ) {
                         when (state.activeTab) {
                             StudioTab.LAYOUT -> {
@@ -1155,7 +1160,7 @@ fun StudioScreen() {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Layouts", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text("Layout library", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.25).sp)
                                     IconButton(onClick = { showTrayPanel = false }, modifier = Modifier.size(26.dp)) {
                                         Icon(Icons.Default.Close, "Close", tint = TextSecondary, modifier = Modifier.size(18.dp))
                                     }
@@ -1168,8 +1173,8 @@ fun StudioScreen() {
                                     placeholder = { Text("Search layouts...", fontSize = 12.sp, color = TextSecondary) },
                                     leadingIcon = { Icon(Icons.Default.Search, null, tint = TextSecondary, modifier = Modifier.size(17.dp)) },
                                     singleLine = true,
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.fillMaxWidth().height(54.dp)
                                 )
 
                                 // Photo Count Filter Chips: All, 1, 2, 3, 4, 5, 6, 7+
@@ -1651,7 +1656,7 @@ fun StudioScreen() {
 
                 // 4. Reference-Style 6-Tab Bottom Dock (Layout, Controls, Style, Text, Creative, Freestyle)
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(64.dp).background(BgPanel).padding(horizontal = 6.dp),
+                    modifier = Modifier.fillMaxWidth().height(76.dp).background(Color(0xFF10151C)).padding(horizontal = 10.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1668,8 +1673,9 @@ fun StudioScreen() {
                         Column(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (selected) Color(0xFF1A2E22) else Color.Transparent)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (selected) Color(0xFF1C3528) else Color.Transparent)
+                                .border(if (selected) 1.dp else 0.dp, if (selected) Color(0xFF386A4B) else Color.Transparent, RoundedCornerShape(16.dp))
                                 .clickable {
                                     if (state.activeTab == tab) {
                                         showTrayPanel = !showTrayPanel
@@ -1678,11 +1684,11 @@ fun StudioScreen() {
                                         showTrayPanel = true
                                     }
                                 }
-                                .padding(vertical = 7.dp),
+                                .padding(vertical = 9.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(icon, tab.label, tint = if (selected) AccentGreen else TextSecondary, modifier = Modifier.size(21.dp))
+                            Icon(icon, tab.label, tint = if (selected) AccentGreen else TextSecondary, modifier = Modifier.size(23.dp))
                             Text(tab.label, color = if (selected) AccentGreen else TextSecondary, fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
                         }
                     }
