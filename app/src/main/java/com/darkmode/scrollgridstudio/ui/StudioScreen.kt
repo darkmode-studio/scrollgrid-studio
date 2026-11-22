@@ -67,15 +67,15 @@ import kotlin.math.roundToInt
 
 private enum class AppScreen { HOME, EDITOR, PREVIEW }
 
-private val BgCanvas = Color(0xFF090B0F)
-private val BgPanel = Color(0xFF11151C)
-private val BgElevated = Color(0xFF1B222C)
-private val BorderSubtle = Color(0xFF2A3440)
-private val AccentGreen = Color(0xFF69E58B)
+private val BgCanvas = Color(0xFFF2F0E9)
+private val BgPanel = Color(0xFFFFFEFA)
+private val BgElevated = Color(0xFFE0E6FF)
+private val BorderSubtle = Color(0xFFE0DED5)
+private val AccentGreen = Color(0xFF3157F6)
 private val CyanGuide = Color(0xFF38BDF8)
 private val DangerRed = Color(0xFFEF4444)
-private val TextPrimary = Color(0xFFF4F7F5)
-private val TextSecondary = Color(0xFFA5B0BC)
+private val TextPrimary = Color(0xFF171916)
+private val TextSecondary = Color(0xFF777A72)
 
 private val DefaultPhotoPalette = listOf(
     0xFFF3F4F6L,
@@ -627,8 +627,8 @@ fun StudioScreen() {
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 12.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Color(0xFF0D1117))
-                        .border(1.dp, Color(0xFF202A35), RoundedCornerShape(24.dp))
+                        .background(Color(0xFFFFFEFA))
+                        .border(1.dp, Color(0xFFE0DED5), RoundedCornerShape(24.dp))
                         .padding(horizontal = 10.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1148,7 +1148,7 @@ fun StudioScreen() {
                             .fillMaxWidth()
                             .heightIn(max = 310.dp)
                             .verticalScroll(rememberScrollState())
-                            .background(Color(0xFF121821))
+                            .background(Color(0xFFFFFEFA))
                             .padding(horizontal = 18.dp, vertical = 14.dp),
                         verticalArrangement = Arrangement.spacedBy(13.dp)
                     ) {
