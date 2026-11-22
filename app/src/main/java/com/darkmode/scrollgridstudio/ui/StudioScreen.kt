@@ -1281,9 +1281,9 @@ fun StudioScreen() {
                                         ).forEach { (label, gap, rad) ->
                                             val active = state.borderDp == gap && state.cornerRadiusDp == rad
                                             Surface(
-                                                onClick = { pushState(state.copy(borderDp = gap, outerMarginDp = gap, cornerRadiusDp = rad)) },
+                                                onClick = { pushState(state.copy(borderDp = gap, cornerRadiusDp = rad)) },
                                                 shape = RoundedCornerShape(18.dp),
-                                                color = if (active) Color(0xFF1A2E22) else BgCanvas,
+                                                color = if (active) Color(0xFFE0E6FF) else BgCanvas,
                                                 border = BorderStroke(1.dp, if (active) AccentGreen else BorderSubtle),
                                                 modifier = Modifier.weight(1f)
                                             ) {
@@ -1503,7 +1503,7 @@ fun StudioScreen() {
                                                 }
                                             },
                                             shape = RoundedCornerShape(18.dp),
-                                            color = if (selected) Color(0xFF1A2E22) else BgCanvas,
+                                            color = if (selected) Color(0xFFE0E6FF) else BgCanvas,
                                             border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
                                         ) {
                                             Text(
@@ -1628,7 +1628,7 @@ fun StudioScreen() {
                                         Surface(
                                             onClick = { applyLayoutCapacity(mode, state.layout, state.carouselSlides) },
                                             shape = RoundedCornerShape(10.dp),
-                                            color = if (selected) Color(0xFF1A2E22) else BgCanvas,
+                                            color = if (selected) Color(0xFFE0E6FF) else BgCanvas,
                                             border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle),
                                             modifier = Modifier.weight(1f)
                                         ) {
@@ -1795,7 +1795,7 @@ private fun SliderWithValue(
             onValueChange = onValueChange,
             valueRange = range,
             colors = SliderDefaults.colors(
-                thumbColor = TextPrimary,
+                thumbColor = AccentGreen,
                 activeTrackColor = AccentGreen,
                 inactiveTrackColor = BorderSubtle
             ),
@@ -1809,7 +1809,7 @@ private fun LayoutThumbnailChip(layout: LayoutStyle, selected: Boolean, onClick:
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(10.dp),
-        color = if (selected) Color(0xFF1A2E22) else BgCanvas,
+        color = if (selected) Color(0xFFE0E6FF) else BgCanvas,
         border = BorderStroke(1.dp, if (selected) AccentGreen else BorderSubtle)
     ) {
         Column(
@@ -1925,7 +1925,7 @@ private fun ExportOptionsSheetContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Photo Export Options", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-            Surface(color = Color(0xFF1A2E22), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, AccentGreen)) {
+            Surface(color = Color(0xFFE0E6FF), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, AccentGreen)) {
                 Text("${w} × ${h} px • sRGB", color = AccentGreen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             }
         }
