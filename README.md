@@ -1,2 +1,3 @@
-# scrollgrid-studio
-ScrollGrid Studio — full-featured Android photo/video collage, seamless carousel, and typography studio with all tools unlocked and automated APK builds.
+# ScrollGrid Studio
+
+Full-featured Android collage, seamless multi-slide carousel, and typography studio with all tools unlocked and automated APK builds via GitHub Actions.
