@@ -12,6 +12,14 @@ import org.junit.Test
 
 class StudioStateTest {
     @Test
+    fun newProjectsUseApprovedControlDefaults() {
+        val state = StudioState()
+        assertEquals(2, state.borderDp)
+        assertEquals(2, state.outerMarginDp)
+        assertEquals(2, state.cornerRadiusDp)
+    }
+
+    @Test
     fun capacityMatchesModeAndSlides() {
         val state = StudioState(
             mode = StudioMode.CAROUSEL,

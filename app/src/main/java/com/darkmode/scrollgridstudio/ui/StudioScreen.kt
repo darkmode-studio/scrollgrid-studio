@@ -133,7 +133,7 @@ fun StudioScreen() {
 
     var showRatioMenu by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
-    var showTrayPanel by remember { mutableStateOf(true) }
+    var showTrayPanel by remember { mutableStateOf(false) }
     var controlsScopeAll by remember { mutableStateOf(true) }
     var layoutSearchQuery by remember { mutableStateOf("") }
     var layoutCountFilter by remember { mutableStateOf<Int?>(null) }
@@ -223,7 +223,7 @@ fun StudioScreen() {
             extras = items.drop(cap)
         )
         statusBanner = "Auto-matched ${matched.label}"
-        showTrayPanel = true
+        showTrayPanel = false
         currentScreen = AppScreen.EDITOR
     }
 
@@ -433,7 +433,7 @@ fun StudioScreen() {
                     redoStack = emptyList()
                     state = StudioState(projectName = "Carousel ($slides slides)", mode = StudioMode.CAROUSEL, carouselSlides = slides)
                     statusBanner = "New $slides-slide SCRL carousel"
-                    showTrayPanel = true
+                    showTrayPanel = false
                     currentScreen = AppScreen.EDITOR
                 },
                 onStartFreeform = {
@@ -442,12 +442,12 @@ fun StudioScreen() {
                     redoStack = emptyList()
                     state = StudioState(projectName = "Freeform Collage", mode = StudioMode.FREESTYLE)
                     statusBanner = "New freeform canvas"
-                    showTrayPanel = true
+                    showTrayPanel = false
                     currentScreen = AppScreen.EDITOR
                 },
                 onSelectScrlTemplate = { tpl ->
                     applyScrlTemplate(tpl, resetProject = true)
-                    showTrayPanel = true
+                    showTrayPanel = false
                     currentScreen = AppScreen.EDITOR
                 },
                 onSelectGridTemplate = { layout ->
@@ -456,7 +456,7 @@ fun StudioScreen() {
                     redoStack = emptyList()
                     state = StudioState(projectName = layout.label, mode = StudioMode.GRID, layout = layout)
                     statusBanner = "Started ${layout.label}"
-                    showTrayPanel = true
+                    showTrayPanel = false
                     currentScreen = AppScreen.EDITOR
                 },
                 onOpenDraft = { draft ->
@@ -467,7 +467,7 @@ fun StudioScreen() {
                         redoStack = emptyList()
                         state = loaded
                         statusBanner = "Opened '${loaded.projectName}'"
-                        showTrayPanel = true
+                        showTrayPanel = false
                         currentScreen = AppScreen.EDITOR
                     }
                 },
@@ -571,6 +571,13 @@ fun StudioScreen() {
                                 )
                             }
                         }
+                    }
+
+                    IconButton(
+                        onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.AddPhotoAlternate, "Add photo", tint = AccentGreen, modifier = Modifier.size(19.dp))
                     }
 
                     Spacer(Modifier.weight(1f))
@@ -973,12 +980,27 @@ fun StudioScreen() {
 
                     // SCRL Floating Action Pill (Delete / Duplicate / Lock) at top center of viewport when an item is selected
                     if (selMedia != null || selOverlay != null) {
+                        val selectedCenter = when {
+                            selOverlay != null -> selOverlay.xFraction to selOverlay.yFraction
+                            selMedia == null -> 0.5f to 0.5f
+                            state.mode == StudioMode.GRID -> state.layout.slotRects()
+                                .getOrNull(state.selectedSlotIndex)
+                                ?.let { (it.left + it.width / 2f) to (it.top + it.height / 2f) }
+                                ?: (0.5f to 0.5f)
+                            else -> selMedia.freeX to selMedia.freeY
+                        }
+                        val toolbarAlignment = when {
+                            selectedCenter.second < 0.5f && selectedCenter.first < 0.5f -> Alignment.TopEnd
+                            selectedCenter.second < 0.5f -> Alignment.TopStart
+                            selectedCenter.first < 0.5f -> Alignment.BottomEnd
+                            else -> Alignment.BottomStart
+                        }
                         Surface(
                             color = BgElevated.copy(alpha = 0.96f),
                             shape = RoundedCornerShape(22.dp),
                             border = BorderStroke(1.dp, BorderSubtle),
                             shadowElevation = 6.dp,
-                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp)
+                            modifier = Modifier.align(toolbarAlignment).padding(8.dp)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -1676,7 +1698,7 @@ fun StudioScreen() {
 
                 // 4. Reference-Style 6-Tab Bottom Dock (Layout, Controls, Style, Text, Creative, Freestyle)
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(76.dp).background(Color(0xFF10151C)).padding(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth().height(62.dp).background(BgPanel).padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1704,7 +1726,7 @@ fun StudioScreen() {
                                         showTrayPanel = true
                                     }
                                 }
-                                .padding(vertical = 9.dp),
+                                .padding(vertical = 5.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
