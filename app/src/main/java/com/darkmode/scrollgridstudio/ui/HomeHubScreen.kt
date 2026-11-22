@@ -36,22 +36,26 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.darkmode.scrollgridstudio.model.*
 import com.darkmode.scrollgridstudio.R
+import com.darkmode.scrollgridstudio.ui.theme.LocalScrollGridPalette
+import com.darkmode.scrollgridstudio.ui.theme.ThemePreference
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val Paper = Color(0xFFF2F0E9)
-private val Ink = Color(0xFF171916)
-private val MutedInk = Color(0xFF777A72)
-private val Blue = Color(0xFF3157F6)
-private val BluePale = Color(0xFFE0E6FF)
-private val Coral = Color(0xFFE8795B)
-private val CardPaper = Color(0xFFFFFEFA)
-private val Hairline = Color(0xFFE0DED5)
+private val Paper: Color @Composable get() = LocalScrollGridPalette.current.paper
+private val Ink: Color @Composable get() = LocalScrollGridPalette.current.ink
+private val MutedInk: Color @Composable get() = LocalScrollGridPalette.current.mutedInk
+private val Blue: Color @Composable get() = LocalScrollGridPalette.current.blue
+private val BluePale: Color @Composable get() = LocalScrollGridPalette.current.bluePale
+private val Coral: Color @Composable get() = LocalScrollGridPalette.current.coral
+private val CardPaper: Color @Composable get() = LocalScrollGridPalette.current.cardPaper
+private val Hairline: Color @Composable get() = LocalScrollGridPalette.current.hairline
 
 @Composable
 fun HomeHubScreen(
     drafts: List<SavedDraftMeta>,
+    themePreference: ThemePreference,
+    onThemePreferenceChange: (ThemePreference) -> Unit,
     onStartPhotoGrid: () -> Unit,
     onStartCarousel: (Int) -> Unit,
     onStartFreeform: () -> Unit,
@@ -62,6 +66,7 @@ fun HomeHubScreen(
     onDeleteDraft: (SavedDraftMeta) -> Unit
 ) {
     var templateFilter by remember { mutableStateOf("All") }
+    var showThemeMenu by remember { mutableStateOf(false) }
     val dateFmt = remember { SimpleDateFormat("MMM d", Locale.getDefault()) }
     val featured = remember {
         listOf(LayoutStyle.BENTO_4, LayoutStyle.POLAROID_2, LayoutStyle.SLANT_3, LayoutStyle.FILM_3,
@@ -86,8 +91,35 @@ fun HomeHubScreen(
                         Text("STUDIO  ·  CREATE / EDIT / SHARE", color = MutedInk, fontSize = 7.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.35.sp)
                     }
                 }
-                Box(Modifier.size(40.dp).clip(CircleShape).background(Ink), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFF72E58A), modifier = Modifier.size(18.dp))
+                Box {
+                    Box(
+                        Modifier.size(40.dp).clip(CircleShape).background(Ink)
+                            .clickable { showThemeMenu = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, "Theme settings", tint = Color(0xFF72E58A), modifier = Modifier.size(18.dp))
+                    }
+                    DropdownMenu(expanded = showThemeMenu, onDismissRequest = { showThemeMenu = false }) {
+                        ThemePreference.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                leadingIcon = {
+                                    Icon(
+                                        when (option) {
+                                            ThemePreference.SYSTEM -> Icons.Default.SettingsBrightness
+                                            ThemePreference.LIGHT -> Icons.Default.LightMode
+                                            ThemePreference.DARK -> Icons.Default.DarkMode
+                                        }, null
+                                    )
+                                },
+                                trailingIcon = { if (themePreference == option) Icon(Icons.Default.Check, null) },
+                                onClick = {
+                                    onThemePreferenceChange(option)
+                                    showThemeMenu = false
+                                }
+                            )
+                        }
+                    }
                 }
             }
 

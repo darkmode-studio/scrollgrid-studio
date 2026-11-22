@@ -58,6 +58,8 @@ import com.darkmode.scrollgridstudio.data.DraftStorage
 import com.darkmode.scrollgridstudio.export.CollageExporter
 import com.darkmode.scrollgridstudio.export.ExportResult
 import com.darkmode.scrollgridstudio.model.*
+import com.darkmode.scrollgridstudio.ui.theme.LocalScrollGridPalette
+import com.darkmode.scrollgridstudio.ui.theme.ThemePreference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,15 +69,15 @@ import kotlin.math.roundToInt
 
 private enum class AppScreen { HOME, EDITOR, PREVIEW }
 
-private val BgCanvas = Color(0xFFF2F0E9)
-private val BgPanel = Color(0xFFFFFEFA)
-private val BgElevated = Color(0xFFE0E6FF)
-private val BorderSubtle = Color(0xFFE0DED5)
-private val AccentGreen = Color(0xFF3157F6)
+private val BgCanvas: Color @Composable get() = LocalScrollGridPalette.current.canvas
+private val BgPanel: Color @Composable get() = LocalScrollGridPalette.current.panel
+private val BgElevated: Color @Composable get() = LocalScrollGridPalette.current.elevated
+private val BorderSubtle: Color @Composable get() = LocalScrollGridPalette.current.border
+private val AccentGreen: Color @Composable get() = LocalScrollGridPalette.current.accent
 private val CyanGuide = Color(0xFF38BDF8)
-private val DangerRed = Color(0xFFEF4444)
-private val TextPrimary = Color(0xFF171916)
-private val TextSecondary = Color(0xFF777A72)
+private val DangerRed: Color @Composable get() = LocalScrollGridPalette.current.danger
+private val TextPrimary: Color @Composable get() = LocalScrollGridPalette.current.textPrimary
+private val TextSecondary: Color @Composable get() = LocalScrollGridPalette.current.textSecondary
 
 private val DefaultPhotoPalette = listOf(
     0xFFF3F4F6L,
@@ -120,7 +122,10 @@ private fun bestLayoutForCount(count: Int): LayoutStyle = when {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StudioScreen() {
+fun StudioScreen(
+    themePreference: ThemePreference,
+    onThemePreferenceChange: (ThemePreference) -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -424,6 +429,8 @@ fun StudioScreen() {
         AppScreen.HOME -> {
             HomeHubScreen(
                 drafts = draftsList,
+                themePreference = themePreference,
+                onThemePreferenceChange = onThemePreferenceChange,
                 onStartPhotoGrid = {
                     homeGridPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                 },
