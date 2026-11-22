@@ -97,7 +97,7 @@ fun HomeHubScreen(
                 }
                 Box(
                     Modifier.fillMaxWidth().height(218.dp).clip(RoundedCornerShape(22.dp))
-                        .background(Brush.linearGradient(listOf(Color(0xFF354333), Color(0xFF1C2820), Color(0xFF171B17)))
+                        .background(Brush.linearGradient(listOf(Color(0xFF354333), Color(0xFF1C2820), Color(0xFF171B17))))
                 ) {
                     HeroArtwork(Modifier.fillMaxSize())
                     Column(Modifier.align(Alignment.BottomStart).padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -278,7 +278,7 @@ private fun DraftCard(draft: SavedDraftMeta, dateText: String, onOpen: () -> Uni
         }
         Column(Modifier.clickable(onClick = onOpen).padding(horizontal = 2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(draft.name, color = StudioCream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("$dateText  ·  \${draft.itemCount} items", color = StudioMuted, fontSize = 10.sp)
+            Text("$dateText  Â·  \${draft.itemCount} items", color = StudioMuted, fontSize = 10.sp)
         }
     }
 }
