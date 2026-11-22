@@ -7,6 +7,7 @@ import com.darkmode.scrollgridstudio.model.ResolutionPreset
 import com.darkmode.scrollgridstudio.model.StudioMode
 import com.darkmode.scrollgridstudio.model.StudioState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StudioStateTest {
@@ -24,6 +25,45 @@ class StudioStateTest {
     fun allLayoutsMatchSlotCounts() {
         LayoutStyle.entries.forEach { layout ->
             assertEquals(layout.slotCount, layout.slotRects().size)
+        }
+    }
+
+    @Test
+    fun generatedLayoutCategoriesMatchTheirNumberedFamilies() {
+        val expectedCategories = listOf("Classic", "Editorial", "Hero", "Hero", "Bento", "Masonry")
+        LayoutStyle.entries.filter { it.variant > 0 }.forEach { layout ->
+            val family = (layout.variant - 1) % expectedCategories.size
+            assertEquals("Wrong family for ${layout.name}", expectedCategories[family], layout.category)
+        }
+    }
+
+    @Test
+    fun everyLayoutRectangleHasPositiveAreaAndStaysInsideCanvas() {
+        LayoutStyle.entries.forEach { layout ->
+            layout.slotRects().forEachIndexed { index, rect ->
+                assertTrue("${layout.name} slot $index has non-positive width", rect.width > 0f)
+                assertTrue("${layout.name} slot $index has non-positive height", rect.height > 0f)
+                assertTrue("${layout.name} slot $index starts left of canvas", rect.left >= 0f)
+                assertTrue("${layout.name} slot $index starts above canvas", rect.top >= 0f)
+                assertTrue("${layout.name} slot $index exceeds right edge", rect.left + rect.width <= 1.001f)
+                assertTrue("${layout.name} slot $index exceeds bottom edge", rect.top + rect.height <= 1.001f)
+            }
+        }
+    }
+
+    @Test
+    fun bentoGeometryIsDistinctFromHeroLeftForRepresentativeSlotCounts() {
+        listOf(2, 3, 4, 6, 9).forEach { count ->
+            val heroLeft = LayoutStyle.entries.first {
+                it.variant > 0 && (it.variant - 1) % 6 == 2 && it.slotCount == count
+            }
+            val bento = LayoutStyle.entries.first {
+                it.variant > 0 && (it.variant - 1) % 6 == 4 && it.slotCount == count
+            }
+            assertTrue(
+                "Bento and Hero Left should not share geometry for $count slots",
+                bento.slotRects() != heroLeft.slotRects()
+            )
         }
     }
 
