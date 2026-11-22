@@ -29,134 +29,59 @@ object CollageExporter {
         val slideW = cfg.outputWidthPx()
         val slideH = cfg.outputHeightPx()
 
-        val slideCount = when {
-            state.mode != StudioMode.CAROUSEL -> 1
-            cfg.mode == ExportMode.SELECTED_SLIDE -> 1
-            else -> state.carouselSlides.coerceIn(1, 20)
-        }
-
-        val totalWidth = if (state.mode == StudioMode.CAROUSEL && cfg.mode != ExportMode.SELECTED_SLIDE) {
-            slideW * slideCount
+        val totalSlides = if (state.mode == StudioMode.CAROUSEL) {
+            state.carouselSlides.coerceIn(1, 20)
         } else {
-            slideW
+            1
         }
+        val totalWidth = slideW * totalSlides
 
         val master = Bitmap.createBitmap(totalWidth, slideH, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(master)
-        canvas.drawColor(state.backgroundStyle.hex.toInt())
 
+        drawBackground(context, canvas, state, totalWidth, slideH)
+
+        val pxFactor = slideW / 360f
         val items = state.slots
         if (items.isNotEmpty()) {
-            val cols = if (state.mode == StudioMode.CAROUSEL && cfg.mode != ExportMode.SELECTED_SLIDE) {
-                (slideCount * 2).coerceAtLeast(1)
-            } else {
-                2
-            }
-            val rows = if (state.mode == StudioMode.CAROUSEL) 1 else ((items.size + 1) / 2).coerceAtLeast(1)
-            val pad = (state.borderDp * (slideW / 360f)).coerceAtLeast(0f)
-            val radius = state.cornerRadiusDp * (slideW / 360f)
-            val cellW = (totalWidth - pad * (cols + 1)) / cols
-            val cellH = (slideH - pad * (rows + 1)) / rows
-
-            val framePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#1C232E")
-            }
-
-            items.forEachIndexed { idx, item ->
-                val r = idx / cols
-                val c = idx % cols
-                if (r >= rows) return@forEachIndexed
-                val left = pad + c * (cellW + pad)
-                val top = pad + r * (cellH + pad)
-                val rect = RectF(left, top, left + cellW, top + cellH)
-                canvas.drawRoundRect(rect, radius, radius, framePaint)
-
-                decodeMediaBitmap(context, item.uri, cellW.toInt(), cellH.toInt())?.let { decoded ->
-                    canvas.save()
-                    val clipPath = Path().apply {
-                        addRoundRect(rect, radius, radius, Path.Direction.CW)
-                    }
-                    canvas.clipPath(clipPath)
-
-                    val cx = rect.centerX() + item.panX * (slideW / 360f)
-                    val cy = rect.centerY() + item.panY * (slideW / 360f)
-                    canvas.translate(cx, cy)
-                    canvas.rotate(item.rotationDeg)
-                    val sx = (if (item.flipHorizontal) -1f else 1f) * item.scale
-                    val sy = item.scale
-                    canvas.scale(sx, sy)
-
-                    val drawScale = maxOf(cellW / decoded.width.toFloat(), cellH / decoded.height.toFloat())
-                    val dw = decoded.width * drawScale
-                    val dh = decoded.height * drawScale
-
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-                        colorFilter = ColorMatrixColorFilter(buildColorMatrix(item))
-                    }
-                    canvas.drawBitmap(
-                        decoded,
-                        null,
-                        RectF(-dw / 2f, -dh / 2f, dw / 2f, dh / 2f),
-                        paint
-                    )
-                    canvas.restore()
-                    decoded.recycle()
-                }
+            when (state.mode) {
+                StudioMode.GRID -> drawGridSlots(context, canvas, state, totalWidth, slideH, pxFactor)
+                StudioMode.CAROUSEL, StudioMode.FREESTYLE -> drawFreeformLayers(context, canvas, state, totalWidth, slideH, pxFactor)
             }
         }
 
-        val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#CC0B0D10")
-        }
-        state.overlays.forEach { overlay ->
-            if (overlay.text.isBlank()) return@forEach
-            val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = overlay.textColorHex.toInt()
-                textSize = overlay.fontSizeSp * (slideW / 360f)
-                textAlign = Paint.Align.CENTER
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            }
-            val cx = totalWidth * overlay.xFraction
-            val cy = slideH * overlay.yFraction
-            val textWidth = textPaint.measureText(overlay.text)
-            if (overlay.usePill) {
-                val padX = 24f * (slideW / 360f)
-                val padY = 14f * (slideW / 360f)
-                val pillRect = RectF(
-                    cx - textWidth / 2f - padX,
-                    cy - textPaint.textSize * 0.85f,
-                    cx + textWidth / 2f + padX,
-                    cy + padY
-                )
-                canvas.drawRoundRect(pillRect, 16f * (slideW / 360f), 16f * (slideW / 360f), pillPaint)
-            }
-            canvas.drawText(overlay.text, cx, cy, textPaint)
-        }
+        drawOverlays(context, canvas, state, totalWidth, slideH, pxFactor)
 
         if (cfg.includeSignature && cfg.signatureText.isNotBlank()) {
             val sigPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(180, 243, 244, 246)
-                textSize = 13f * (slideW / 360f)
+                color = Color.argb(190, 243, 244, 246)
+                textSize = 13f * pxFactor
                 textAlign = Paint.Align.RIGHT
+                typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
             }
-            val margin = 20f * (slideW / 360f)
-            for (s in 0 until slideCount) {
+            val margin = 20f * pxFactor
+            for (s in 0 until totalSlides) {
                 val rightEdge = (s + 1) * slideW - margin
                 canvas.drawText(cfg.signatureText, rightEdge, slideH - margin, sigPaint)
             }
         }
 
-        val slices: List<Bitmap> = if (state.mode == StudioMode.CAROUSEL && cfg.mode == ExportMode.AUTO_SLICE && slideCount > 1) {
-            val orderedIndices = if (cfg.slideOrder == SlideOrder.REVERSE) {
-                (slideCount - 1 downTo 0).toList()
-            } else {
-                (0 until slideCount).toList()
+        val slices: List<Bitmap> = when {
+            state.mode == StudioMode.CAROUSEL && cfg.mode == ExportMode.SELECTED_SLIDE && totalSlides > 1 -> {
+                val targetIdx = (cfg.selectedSlideNumber - 1).coerceIn(0, totalSlides - 1)
+                listOf(Bitmap.createBitmap(master, targetIdx * slideW, 0, slideW, slideH)).also { master.recycle() }
             }
-            orderedIndices.map { idx ->
-                Bitmap.createBitmap(master, idx * slideW, 0, slideW, slideH)
-            }.also { master.recycle() }
-        } else {
-            listOf(master)
+            state.mode == StudioMode.CAROUSEL && cfg.mode == ExportMode.AUTO_SLICE && totalSlides > 1 -> {
+                val orderedIndices = if (cfg.slideOrder == SlideOrder.REVERSE) {
+                    (totalSlides - 1 downTo 0).toList()
+                } else {
+                    (0 until totalSlides).toList()
+                }
+                orderedIndices.map { idx ->
+                    Bitmap.createBitmap(master, idx * slideW, 0, slideW, slideH)
+                }.also { master.recycle() }
+            }
+            else -> listOf(master)
         }
 
         val timestamp = System.currentTimeMillis()
@@ -165,7 +90,7 @@ object CollageExporter {
             val zipUri = saveZipToDownloads(context, zipName, slices, cfg)
             slices.forEach { if (!it.isRecycled) it.recycle() }
             return zipUri?.let {
-                ExportResult(listOf(it), listOf(zipName), "Saved $zipName (${slices.size} slides)")
+                ExportResult(listOf(it), listOf(zipName), "Saved $zipName (${slices.size} slide(s))")
             }
         }
 
@@ -183,13 +108,234 @@ object CollageExporter {
         }
 
         return if (savedUris.isNotEmpty()) {
+            val outW = if (cfg.mode == ExportMode.SINGLE_MERGED) totalWidth else slideW
             ExportResult(
                 uris = savedUris,
                 fileNames = savedNames,
-                summary = "Saved ${savedUris.size} ${cfg.format.label} file(s) • ${slideW}x${slideH}px"
+                summary = "Saved ${savedUris.size} ${cfg.format.label} file(s) • ${outW}x${slideH}px"
             )
         } else {
             null
+        }
+    }
+
+    private fun drawBackground(
+        context: Context,
+        canvas: Canvas,
+        state: StudioState,
+        width: Int,
+        height: Int
+    ) {
+        val bg = state.backgroundStyle
+        if (bg.isBlurPhoto && state.slots.isNotEmpty()) {
+            val tiny = decodeMediaBitmap(context, state.slots.first().uri, 48, 48)
+            if (tiny != null) {
+                val blurPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                canvas.drawBitmap(tiny, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), blurPaint)
+                tiny.recycle()
+                canvas.drawColor(Color.argb(110, 11, 13, 16))
+                return
+            }
+        }
+        if (bg.startHex != bg.endHex) {
+            val shader = LinearGradient(
+                0f, 0f, width.toFloat(), height.toFloat(),
+                bg.startHex.toInt(), bg.endHex.toInt(),
+                Shader.TileMode.CLAMP
+            )
+            val paint = Paint().apply { this.shader = shader }
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        } else {
+            canvas.drawColor(bg.startHex.toInt())
+        }
+    }
+
+    private fun drawGridSlots(
+        context: Context,
+        canvas: Canvas,
+        state: StudioState,
+        totalWidth: Int,
+        totalHeight: Int,
+        pxFactor: Float
+    ) {
+        val outer = state.outerMarginDp * pxFactor
+        val gap = state.borderDp * pxFactor
+        val radius = state.cornerRadiusDp * pxFactor
+        val contentLeft = outer
+        val contentTop = outer
+        val contentW = (totalWidth - outer * 2f).coerceAtLeast(1f)
+        val contentH = (totalHeight - outer * 2f).coerceAtLeast(1f)
+
+        val rects = state.layout.slotRects()
+        val framePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#1C232E") }
+        val polaroidPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#F3F4F6") }
+
+        rects.forEachIndexed { idx, slotRect ->
+            val item = state.slots.getOrNull(idx) ?: return@forEachIndexed
+            val halfGap = gap / 2f
+            val l = contentLeft + slotRect.left * contentW + halfGap
+            val t = contentTop + slotRect.top * contentH + halfGap
+            val r = contentLeft + (slotRect.left + slotRect.width) * contentW - halfGap
+            val b = contentTop + (slotRect.top + slotRect.height) * contentH - halfGap
+            if (r <= l || b <= t) return@forEachIndexed
+
+            val outerRect = RectF(l, t, r, b)
+            if (slotRect.polaroidBottomPad > 0f) {
+                canvas.drawRoundRect(outerRect, radius, radius, polaroidPaint)
+                val p = 10f * pxFactor
+                val bottomExtra = outerRect.height() * slotRect.polaroidBottomPad
+                val photoRect = RectF(l + p, t + p, r - p, b - bottomExtra)
+                drawMediaIntoRect(context, canvas, item, photoRect, radius * 0.5f, pxFactor, framePaint)
+            } else {
+                drawMediaIntoRect(context, canvas, item, outerRect, radius, pxFactor, framePaint)
+            }
+        }
+    }
+
+    private fun drawFreeformLayers(
+        context: Context,
+        canvas: Canvas,
+        state: StudioState,
+        totalWidth: Int,
+        totalHeight: Int,
+        pxFactor: Float
+    ) {
+        val radius = state.cornerRadiusDp * pxFactor
+        val framePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#1C232E") }
+        val sorted = state.slots.sortedBy { it.zIndex }
+        sorted.forEach { item ->
+            val w = (item.freeW * totalWidth).coerceAtLeast(40f)
+            val h = (item.freeH * totalHeight).coerceAtLeast(40f)
+            val cx = item.freeX * totalWidth
+            val cy = item.freeY * totalHeight
+            val rect = RectF(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
+            drawMediaIntoRect(context, canvas, item, rect, radius, pxFactor, framePaint)
+        }
+    }
+
+    private fun drawMediaIntoRect(
+        context: Context,
+        canvas: Canvas,
+        item: MediaItem,
+        rect: RectF,
+        radius: Float,
+        pxFactor: Float,
+        framePaint: Paint
+    ) {
+        canvas.drawRoundRect(rect, radius, radius, framePaint)
+        decodeMediaBitmap(context, item.uri, rect.width().toInt(), rect.height().toInt())?.let { decoded ->
+            canvas.save()
+            val clipPath = Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) }
+            canvas.clipPath(clipPath)
+
+            val cx = rect.centerX() + item.panX * pxFactor
+            val cy = rect.centerY() + item.panY * pxFactor
+            canvas.translate(cx, cy)
+            canvas.rotate(item.rotationDeg)
+            val sx = (if (item.flipHorizontal) -1f else 1f) * item.scale
+            canvas.scale(sx, item.scale)
+
+            val drawScale = if (item.fitInside) {
+                minOf(rect.width() / decoded.width.toFloat(), rect.height() / decoded.height.toFloat())
+            } else {
+                maxOf(rect.width() / decoded.width.toFloat(), rect.height() / decoded.height.toFloat())
+            }
+            val dw = decoded.width * drawScale
+            val dh = decoded.height * drawScale
+
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                colorFilter = ColorMatrixColorFilter(buildColorMatrix(item))
+                alpha = (item.opacity.coerceIn(0.1f, 1f) * 255).toInt()
+            }
+            canvas.drawBitmap(decoded, null, RectF(-dw / 2f, -dh / 2f, dw / 2f, dh / 2f), paint)
+            canvas.restore()
+            decoded.recycle()
+        }
+    }
+
+    private fun drawOverlays(
+        context: Context,
+        canvas: Canvas,
+        state: StudioState,
+        totalWidth: Int,
+        totalHeight: Int,
+        pxFactor: Float
+    ) {
+        val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#CC0B0D10")
+        }
+        state.overlays.forEach { overlay ->
+            val cx = totalWidth * overlay.xFraction
+            val cy = totalHeight * overlay.yFraction
+
+            if (overlay.stickerUri != null) {
+                val targetSize = (totalHeight * overlay.stickerSizeFraction).toInt().coerceAtLeast(64)
+                decodeMediaBitmap(context, overlay.stickerUri, targetSize, targetSize)?.let { bmp ->
+                    canvas.save()
+                    canvas.translate(cx, cy)
+                    canvas.rotate(overlay.rotationDeg)
+                    val aspect = bmp.width.toFloat() / bmp.height.toFloat().coerceAtLeast(1f)
+                    val dh = targetSize.toFloat()
+                    val dw = dh * aspect
+                    val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                        alpha = (overlay.opacity.coerceIn(0.1f, 1f) * 255).toInt()
+                    }
+                    canvas.drawBitmap(bmp, null, RectF(-dw / 2f, -dh / 2f, dw / 2f, dh / 2f), p)
+                    canvas.restore()
+                    bmp.recycle()
+                }
+                return@forEach
+            }
+
+            if (overlay.text.isBlank()) return@forEach
+
+            val typeface = when (overlay.fontStyle) {
+                TextFontStyle.SANS_BOLD -> Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                TextFontStyle.SERIF -> Typeface.create(Typeface.SERIF, Typeface.BOLD)
+                TextFontStyle.MONO -> Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                TextFontStyle.ITALIC -> Typeface.create(Typeface.SERIF, Typeface.BOLD_ITALIC)
+            }
+            val align = when (overlay.alignment) {
+                TextAlignOption.LEFT -> Paint.Align.LEFT
+                TextAlignOption.CENTER -> Paint.Align.CENTER
+                TextAlignOption.RIGHT -> Paint.Align.RIGHT
+            }
+            val alphaInt = (overlay.opacity.coerceIn(0.1f, 1f) * 255).toInt()
+            val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = overlay.textColorHex.toInt()
+                alpha = alphaInt
+                textSize = overlay.fontSizeSp * pxFactor
+                textAlign = align
+                this.typeface = typeface
+                if (overlay.useOutline) {
+                    setShadowLayer(4f * pxFactor, 0f, 2f * pxFactor, Color.BLACK)
+                }
+            }
+
+            val textWidth = textPaint.measureText(overlay.text)
+            canvas.save()
+            canvas.translate(cx, cy)
+            canvas.rotate(overlay.rotationDeg)
+
+            if (overlay.usePill) {
+                pillPaint.alpha = (alphaInt * 0.8f).toInt()
+                val padX = 20f * pxFactor
+                val padY = 12f * pxFactor
+                val rectLeft = when (overlay.alignment) {
+                    TextAlignOption.LEFT -> -padX
+                    TextAlignOption.CENTER -> -textWidth / 2f - padX
+                    TextAlignOption.RIGHT -> -textWidth - padX
+                }
+                val pillRect = RectF(
+                    rectLeft,
+                    -textPaint.textSize * 0.85f,
+                    rectLeft + textWidth + padX * 2f,
+                    padY
+                )
+                canvas.drawRoundRect(pillRect, 14f * pxFactor, 14f * pxFactor, pillPaint)
+            }
+            canvas.drawText(overlay.text, 0f, 0f, textPaint)
+            canvas.restore()
         }
     }
 

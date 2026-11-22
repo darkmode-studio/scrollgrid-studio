@@ -1,6 +1,9 @@
 package com.darkmode.scrollgridstudio
 
+import com.darkmode.scrollgridstudio.model.AspectRatioOption
+import com.darkmode.scrollgridstudio.model.ExportConfig
 import com.darkmode.scrollgridstudio.model.LayoutStyle
+import com.darkmode.scrollgridstudio.model.ResolutionPreset
 import com.darkmode.scrollgridstudio.model.StudioMode
 import com.darkmode.scrollgridstudio.model.StudioState
 import org.junit.Assert.assertEquals
@@ -15,5 +18,22 @@ class StudioStateTest {
             layout = LayoutStyle.GRID_2X2
         )
         assertEquals(8, state.maxCapacity())
+    }
+
+    @Test
+    fun allLayoutsMatchSlotCounts() {
+        LayoutStyle.entries.forEach { layout ->
+            assertEquals(layout.slotCount, layout.slotRects().size)
+        }
+    }
+
+    @Test
+    fun exportDimensionsMatchPresetAndRatio() {
+        val cfg = ExportConfig(
+            resolution = ResolutionPreset.IG_1080,
+            aspectRatio = AspectRatioOption.PORTRAIT_4_5
+        )
+        assertEquals(1080, cfg.outputWidthPx())
+        assertEquals(1350, cfg.outputHeightPx())
     }
 }
