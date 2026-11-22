@@ -1141,9 +1141,11 @@ fun StudioScreen() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(max = 276.dp)
+                            .verticalScroll(rememberScrollState())
                             .background(BgPanel)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
                         when (state.activeTab) {
                             StudioTab.LAYOUT -> {
@@ -1649,7 +1651,7 @@ fun StudioScreen() {
 
                 // 4. Reference-Style 6-Tab Bottom Dock (Layout, Controls, Style, Text, Creative, Freestyle)
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(58.dp).background(BgPanel).padding(horizontal = 4.dp),
+                    modifier = Modifier.fillMaxWidth().height(64.dp).background(BgPanel).padding(horizontal = 6.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1676,12 +1678,12 @@ fun StudioScreen() {
                                         showTrayPanel = true
                                     }
                                 }
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 7.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            Icon(icon, tab.label, tint = if (selected) AccentGreen else TextSecondary, modifier = Modifier.size(19.dp))
-                            Text(tab.label, color = if (selected) AccentGreen else TextSecondary, fontSize = 10.sp)
+                            Icon(icon, tab.label, tint = if (selected) AccentGreen else TextSecondary, modifier = Modifier.size(21.dp))
+                            Text(tab.label, color = if (selected) AccentGreen else TextSecondary, fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
                         }
                     }
                 }
