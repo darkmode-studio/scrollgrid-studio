@@ -405,7 +405,7 @@ fun StudioScreen(
         AppScreen.SWIPE_PREVIEW -> {
             SwipePreviewScreen(
                 state = state,
-                onBack = { currentScreen = AppScreen.EDITOR },
+                onBackToEdit = { currentScreen = AppScreen.EDITOR },
                 onOpenExport = {
                     currentScreen = AppScreen.EDITOR
                     showExportSheet = true
@@ -919,31 +919,42 @@ fun StudioScreen(
                                     .padding(horizontal = overlay.paddingDp.dp, vertical = (overlay.paddingDp * 0.6f).dp)
                             } else Modifier.padding(4.dp)
 
-                            val baseStyle = TextStyle(
-                                fontSize = overlay.fontSizeSp.sp,
-                                fontFamily = ff,
-                                fontStyle = fs,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = ta,
-                                lineHeight = (overlay.fontSizeSp * overlay.lineHeightMultiplier).sp,
-                                shadow = when {
-                                    overlay.useShadow -> Shadow(
-                                        color = Color(overlay.shadowColorHex),
-                                        offset = Offset(0f, 3f),
-                                        blurRadius = overlay.shadowRadiusDp * 2f
-                                    )
-                                    overlay.useOutline -> Shadow(
-                                        color = Color(overlay.outlineColorHex),
-                                        offset = Offset(0f, 0f),
-                                        blurRadius = overlay.outlineWidthDp * 2f
-                                    )
-                                    else -> null
-                                },
-                                brush = if (overlay.useGradient) {
-                                    Brush.linearGradient(listOf(Color(overlay.textColorHex), Color(overlay.gradientEndHex)))
-                                } else null,
-                                color = if (overlay.useGradient) Color.Unspecified else Color(overlay.textColorHex)
-                            ).let { st ->
+                            val textShadow = when {
+                                overlay.useShadow -> Shadow(
+                                    color = Color(overlay.shadowColorHex),
+                                    offset = Offset(0f, 3f),
+                                    blurRadius = overlay.shadowRadiusDp * 2f
+                                )
+                                overlay.useOutline -> Shadow(
+                                    color = Color(overlay.outlineColorHex),
+                                    offset = Offset(0f, 0f),
+                                    blurRadius = overlay.outlineWidthDp * 2f
+                                )
+                                else -> null
+                            }
+                            val baseStyle = (if (overlay.useGradient) {
+                                TextStyle(
+                                    brush = Brush.linearGradient(listOf(Color(overlay.textColorHex), Color(overlay.gradientEndHex))),
+                                    fontSize = overlay.fontSizeSp.sp,
+                                    fontFamily = ff,
+                                    fontStyle = fs,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = ta,
+                                    lineHeight = (overlay.fontSizeSp * overlay.lineHeightMultiplier).sp,
+                                    shadow = textShadow
+                                )
+                            } else {
+                                TextStyle(
+                                    color = Color(overlay.textColorHex),
+                                    fontSize = overlay.fontSizeSp.sp,
+                                    fontFamily = ff,
+                                    fontStyle = fs,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = ta,
+                                    lineHeight = (overlay.fontSizeSp * overlay.lineHeightMultiplier).sp,
+                                    shadow = textShadow
+                                )
+                            }).let { st ->
                                 // Preserve Malayalam conjuncts/ligatures when letterSpacingEm == 0
                                 if (overlay.letterSpacingEm > 0.001f) st.copy(letterSpacing = overlay.letterSpacingEm.em) else st
                             }
