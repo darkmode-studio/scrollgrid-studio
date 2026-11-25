@@ -1036,6 +1036,12 @@ fun StudioScreen(
                     ContextChip(Icons.Default.Flip, "Flip") {
                         updateSelectedMedia { it.copy(flipHorizontal = !it.flipHorizontal) }
                     }
+                    ContextChip(Icons.Default.ZoomIn, "Zoom +") {
+                        updateSelectedMedia { it.copy(scale = (it.scale * 1.2f).coerceIn(0.5f, 4f)) }
+                    }
+                    ContextChip(Icons.Default.FilterCenterFocus, "Center") {
+                        updateSelectedMedia { it.copy(panX = 0f, panY = 0f) }
+                    }
                     ContextChip(Icons.Default.RestartAlt, "Reset") {
                         updateSelectedMedia { it.copy(scale = 1f, panX = 0f, panY = 0f, rotationDeg = 0f, flipHorizontal = false, fitInside = false) }
                     }

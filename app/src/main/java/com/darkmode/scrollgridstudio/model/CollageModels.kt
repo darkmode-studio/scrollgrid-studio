@@ -43,6 +43,12 @@ enum class LayoutStyle(val label: String, val slotCount: Int, val category: Stri
     GRID_5("Mosaic 5", 5, "Masonry"),
     GRID_6("2x3 Grid", 6, "Masonry"),
     GRID_9("3x3 Grid", 9, "Masonry"),
+    STITCH_V_2("Stitch V 2", 2, "Stitch"),
+    STITCH_V_3("Stitch V 3", 3, "Stitch"),
+    STITCH_V_4("Stitch V 4", 4, "Stitch"),
+    STITCH_H_2("Stitch H 2", 2, "Stitch"),
+    STITCH_H_3("Stitch H 3", 3, "Stitch"),
+    STITCH_H_4("Stitch H 4", 4, "Stitch"),
     LAYOUT_016("Grid 2 · 016", 2, "Classic", 1),
     LAYOUT_017("Strip 3 · 017", 3, "Editorial", 2),
     LAYOUT_018("Hero Left 4 · 018", 4, "Hero", 3),
@@ -309,6 +315,14 @@ enum class LayoutStyle(val label: String, val slotCount: Int, val category: Stri
             val c = idx % 3
             SlotRect(c / 3f, r / 3f, 1f / 3f, 1f / 3f)
         }
+        STITCH_V_2, STITCH_V_3, STITCH_V_4 -> (0 until slotCount).map { idx ->
+            val h = 1f / slotCount
+            SlotRect(0f, idx * h, 1f, h)
+        }
+        STITCH_H_2, STITCH_H_3, STITCH_H_4 -> (0 until slotCount).map { idx ->
+            val w = 1f / slotCount
+            SlotRect(idx * w, 0f, w, 1f)
+        }
         else -> generatedSlotRects()
     }
 
@@ -360,6 +374,7 @@ fun LayoutStyle.pickerCategory(): String = when {
     category.equals("Bento", ignoreCase = true) || this == LayoutStyle.BENTO_4 -> "Bento"
     category.equals("Editorial", ignoreCase = true) -> "Magazine"
     category.equals("Masonry", ignoreCase = true) -> "Scrapbook"
+    category.equals("Stitch", ignoreCase = true) -> "Stitch"
     category.equals("Hero", ignoreCase = true) -> "Asymmetric"
     else -> "Grid"
 }

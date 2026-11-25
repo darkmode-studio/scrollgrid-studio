@@ -36,7 +36,7 @@ import com.darkmode.scrollgridstudio.model.pickerCategory
 import com.darkmode.scrollgridstudio.ui.theme.LocalScrollGridPalette
 
 private val LayoutCategories = listOf(
-    "All", "Favorites", "Grid", "Geometric", "Magazine", "Bento", "Film-Strip", "Polaroid", "Scrapbook", "Asymmetric"
+    "All", "Favorites", "Grid", "Stitch", "Geometric", "Magazine", "Bento", "Film-Strip", "Polaroid", "Scrapbook", "Asymmetric"
 )
 
 @Composable
